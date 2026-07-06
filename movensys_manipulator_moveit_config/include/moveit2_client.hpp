@@ -72,6 +72,14 @@ class MoveIt2Client{
         bool relativeBaseEefCartesian(const PoseTarget& delta);
         bool relativeToolEefCartesian(const PoseTarget& delta);
 
+
+        bool cartesianPath(const std::vector<PoseTarget>& targets);
+        static PoseTarget composeBaseDelta(const PoseTarget& ref, const PoseTarget& delta);
+        static PoseTarget composeToolDelta(const PoseTarget& ref, const PoseTarget& delta);
+
+        // Current EEF pose expressed as a PoseTarget (RPY), or nullopt on failure.
+        std::optional<PoseTarget> currentPoseAsPoseTarget();
+
         bool setGripper(bool open_gripper);
 
         std::optional<TFResult> lookupTF(const std::string& parent_frame,

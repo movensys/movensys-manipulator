@@ -215,21 +215,32 @@ bool runYoloPickPlace(const rclcpp::Node::SharedPtr& node,
             }
         }
 
+        // Build the approach as ONE continuous Cartesian move that passes THROUGH
+        // the centred "top of piece" pose without stopping, then descends to grasp.
+        auto cur_pose = client.currentPoseAsPoseTarget();
+        if (!cur_pose.has_value()) {
+            RCLCPP_ERROR(node->get_logger(),
+                "Failed to read current pose before approach for %s", cls.c_str());
+            return false;
+        }
+
+        // Via point ("top of piece"): camera->gripper offset applied in the TOOL frame.
         moveit2_client::PoseTarget grip_offset = {
             {cam_to_grip_x + x_tag,
              cam_to_grip_y + y_tag,
              0.0},
             {0.0, 0.0, cam_to_grip_yaw + yaw_tag}
         };
-        if (!client.relativeToolEefCartesian(grip_offset)) {
-            RCLCPP_ERROR(node->get_logger(),
-                "Camera-to-gripper offset move failed for %s", cls.c_str());
-            return false;
-        }
+        const auto top = moveit2_client::MoveIt2Client::composeToolDelta(
+            cur_pose.value(), grip_offset);
 
-        moveit2_client::PoseTarget down = {{0.0, 0.0, -descent_z}, {0.0, 0.0, 0.0}};
-        if (!client.relativeBaseEefCartesian(down)) {
-            RCLCPP_ERROR(node->get_logger(), "Descend failed for %s", cls.c_str());
+        // Grasp point: straight down from the via point in the BASE frame.
+        const auto grasp = moveit2_client::MoveIt2Client::composeBaseDelta(
+            top, {{0.0, 0.0, -descent_z}, {0.0, 0.0, 0.0}});
+
+        if (!client.cartesianPath({top, grasp})) {
+            RCLCPP_ERROR(node->get_logger(),
+                "Approach-and-descend failed for %s", cls.c_str());
             return false;
         }
 
@@ -253,12 +264,11 @@ bool runYoloPickPlace(const rclcpp::Node::SharedPtr& node,
         }
         const auto& box = it->second;
 
-        if (!client.absoluteBaseEefCartesian(box.up)) {
-            RCLCPP_ERROR(node->get_logger(), "Move to box-up failed for %s", cls.c_str());
-            return false;
-        }
-        if (!client.absoluteBaseEefCartesian(box.down)) {
-            RCLCPP_ERROR(node->get_logger(), "Move to box-down failed for %s", cls.c_str());
+        // Transit to the box hover pose and descend to release height as ONE
+        // continuous move — pass through box-up without stopping.
+        if (!client.cartesianPath({box.up, box.down})) {
+            RCLCPP_ERROR(node->get_logger(),
+                "Move to box (up->down) failed for %s", cls.c_str());
             return false;
         }
         if (!client.setGripper(false)) {

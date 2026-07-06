@@ -193,18 +193,31 @@ bool MoveIt2Client::absoluteBaseEefJointMovement(const PoseTarget& target){
 }
 
 bool MoveIt2Client::absoluteBaseEefCartesian(const PoseTarget& target){
+    return cartesianPath({target});
+}
+
+bool MoveIt2Client::cartesianPath(const std::vector<PoseTarget>& targets){
+    if (targets.empty()) {
+        RCLCPP_WARN(node_->get_logger(), "cartesianPath called with no waypoints");
+        return true;
+    }
+
     move_group_->setEndEffectorLink(eef_name);
     move_group_->setPlanningTime(planning_time);
 
     logCurrentState();
     RCLCPP_INFO(node_->get_logger(),
-                "Sending absolute base eef cartesian = "
-                "pos: [%.3f, %.3f, %.3f], ori: [%.3f, %.3f, %.3f]",
-                target.pos[0], target.pos[1], target.pos[2],
-                target.ori[0], target.ori[1], target.ori[2]);
+                "Sending cartesian path with %zu waypoint(s)", targets.size());
 
     std::vector<geometry_msgs::msg::Pose> waypoints;
-    waypoints.push_back(createPose(target));
+    waypoints.reserve(targets.size());
+    for (const auto& target : targets) {
+        RCLCPP_INFO(node_->get_logger(),
+                    "  waypoint = pos: [%.3f, %.3f, %.3f], ori: [%.3f, %.3f, %.3f]",
+                    target.pos[0], target.pos[1], target.pos[2],
+                    target.ori[0], target.ori[1], target.ori[2]);
+        waypoints.push_back(createPose(target));
+    }
 
     moveit_msgs::msg::RobotTrajectory trajectory_msg;
 
@@ -255,27 +268,12 @@ bool MoveIt2Client::relativeBaseEefCartesian(const PoseTarget& delta){
                 delta.pos[0], delta.pos[1], delta.pos[2],
                 delta.ori[0], delta.ori[1], delta.ori[2]);
 
-    move_group_->setEndEffectorLink(eef_name);
-    auto robot_state = move_group_->getCurrentState(timeout);
-    if (!robot_state) {
-        RCLCPP_ERROR(node_->get_logger(), "getCurrentState failed");
+    auto ref = currentPoseAsPoseTarget();
+    if (!ref.has_value()) {
         return false;
     }
 
-    const Eigen::Isometry3d& eef_transform = robot_state->getGlobalLinkTransform(eef_name);
-    Eigen::Vector3d pos = eef_transform.translation();
-    Eigen::Quaterniond quat(eef_transform.rotation());
-
-    double x = pos.x(), y = pos.y(), z = pos.z();
-    double roll, pitch, yaw;
-    tf2::Quaternion q(quat.x(), quat.y(), quat.z(), quat.w());
-    tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);
-
-    PoseTarget absolute_target;
-    absolute_target.pos = {x + delta.pos[0], y + delta.pos[1], z + delta.pos[2]};
-    absolute_target.ori = {roll + delta.ori[0], pitch + delta.ori[1], yaw + delta.ori[2]};
-
-    return absoluteBaseEefCartesian(absolute_target);
+    return absoluteBaseEefCartesian(composeBaseDelta(ref.value(), delta));
 }
 
 bool MoveIt2Client::relativeToolEefCartesian(const PoseTarget& delta){
@@ -285,14 +283,28 @@ bool MoveIt2Client::relativeToolEefCartesian(const PoseTarget& delta){
                 delta.pos[0], delta.pos[1], delta.pos[2],
                 delta.ori[0], delta.ori[1], delta.ori[2]);
 
-    move_group_->setEndEffectorLink(eef_name);
-    auto robot_state = move_group_->getCurrentState(timeout);
-    if (!robot_state) {
-        RCLCPP_ERROR(node_->get_logger(), "getCurrentState failed");
+    auto ref = currentPoseAsPoseTarget();
+    if (!ref.has_value()) {
         return false;
     }
 
-    Eigen::Isometry3d T_base_eef = robot_state->getGlobalLinkTransform(eef_name);
+    return absoluteBaseEefCartesian(composeToolDelta(ref.value(), delta));
+}
+
+PoseTarget MoveIt2Client::composeBaseDelta(const PoseTarget& ref, const PoseTarget& delta){
+    return {
+        {ref.pos[0] + delta.pos[0], ref.pos[1] + delta.pos[1], ref.pos[2] + delta.pos[2]},
+        {ref.ori[0] + delta.ori[0], ref.ori[1] + delta.ori[1], ref.ori[2] + delta.ori[2]}
+    };
+}
+
+PoseTarget MoveIt2Client::composeToolDelta(const PoseTarget& ref, const PoseTarget& delta){
+    Eigen::Isometry3d T_ref = Eigen::Isometry3d::Identity();
+    T_ref.translation() = Eigen::Vector3d(ref.pos[0], ref.pos[1], ref.pos[2]);
+    T_ref.linear() =
+        (Eigen::AngleAxisd(ref.ori[2], Eigen::Vector3d::UnitZ()) *
+         Eigen::AngleAxisd(ref.ori[1], Eigen::Vector3d::UnitY()) *
+         Eigen::AngleAxisd(ref.ori[0], Eigen::Vector3d::UnitX())).toRotationMatrix();
 
     Eigen::Isometry3d T_delta = Eigen::Isometry3d::Identity();
     T_delta.translation() = Eigen::Vector3d(delta.pos[0], delta.pos[1], delta.pos[2]);
@@ -301,19 +313,34 @@ bool MoveIt2Client::relativeToolEefCartesian(const PoseTarget& delta){
          Eigen::AngleAxisd(delta.ori[1], Eigen::Vector3d::UnitY()) *
          Eigen::AngleAxisd(delta.ori[0], Eigen::Vector3d::UnitX())).toRotationMatrix();
 
-    Eigen::Isometry3d T_target = T_base_eef * T_delta;
+    Eigen::Isometry3d T_target = T_ref * T_delta;
     Eigen::Vector3d pos = T_target.translation();
     Eigen::Quaterniond q_target(T_target.rotation());
 
     tf2::Quaternion tf_q(q_target.x(), q_target.y(), q_target.z(), q_target.w());
-    double target_roll, target_pitch, target_yaw;
-    tf2::Matrix3x3(tf_q).getRPY(target_roll, target_pitch, target_yaw);
+    double roll, pitch, yaw;
+    tf2::Matrix3x3(tf_q).getRPY(roll, pitch, yaw);
 
-    PoseTarget absolute_target;
-    absolute_target.pos = {pos.x(), pos.y(), pos.z()};
-    absolute_target.ori = {target_roll, target_pitch, target_yaw};
+    return {{pos.x(), pos.y(), pos.z()}, {roll, pitch, yaw}};
+}
 
-    return absoluteBaseEefCartesian(absolute_target);
+std::optional<PoseTarget> MoveIt2Client::currentPoseAsPoseTarget(){
+    move_group_->setEndEffectorLink(eef_name);
+    auto robot_state = move_group_->getCurrentState(timeout);
+    if (!robot_state) {
+        RCLCPP_ERROR(node_->get_logger(), "getCurrentState failed");
+        return std::nullopt;
+    }
+
+    const Eigen::Isometry3d& eef_transform = robot_state->getGlobalLinkTransform(eef_name);
+    Eigen::Vector3d pos = eef_transform.translation();
+    Eigen::Quaterniond quat(eef_transform.rotation());
+
+    tf2::Quaternion q(quat.x(), quat.y(), quat.z(), quat.w());
+    double roll, pitch, yaw;
+    tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);
+
+    return PoseTarget{{pos.x(), pos.y(), pos.z()}, {roll, pitch, yaw}};
 }
 
 std::optional<TFResult> MoveIt2Client::lookupTF(const std::string& parent_frame,
