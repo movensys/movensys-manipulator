@@ -19,6 +19,18 @@ yolo_trajectory_cpp:
     # Vertical descent from hover pose to grasp pose.
     descent_z: 0.21          # [m]
 
+    # Pilz blended-LIN motion. When true, the pick (hover->grasp) and place
+    # (lift->box_up->box_down) motions are executed as single continuous LIN
+    # sequences that blend through the intermediate hover waypoints instead of
+    # stopping at each. Requires the MoveGroupSequenceAction capability on
+    # move_group and realistic pilz_cartesian_limits.yaml.
+    use_pilz_blend: true
+    blend_pick:  0.02        # [m] < grip-offset segment (~0.076 m) and < descent_z
+    blend_lift:  0.05        # [m] rounds the lift apex
+    blend_box:   0.05        # [m] < half of (box_up->box_down = 0.205 m)
+    goal_tol_pos: 0.001      # [m]   LIN goal position tolerance
+    goal_tol_ang: 0.01       # [rad] LIN goal orientation tolerance
+
     # Camera-optical-centre to gripper-centre offset, expressed in the tool frame.
     cam_to_grip_x:    0.015  # [m]
     cam_to_grip_y:   -0.075  # [m]

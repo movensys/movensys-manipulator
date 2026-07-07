@@ -18,10 +18,13 @@
 namespace moveit2_client {
 
 MoveIt2Client::MoveIt2Client(const rclcpp::Node::SharedPtr& node, const std::string& group_name)
-    : node_(node){
+    : node_(node), group_name_(group_name){
     move_group_ = std::make_shared<moveit::planning_interface::MoveGroupInterface>(
         node_, group_name);
     gripper_client_ = node_->create_client<std_srvs::srv::SetBool>("/wmx/set_gripper");
+
+    sequence_client_ = rclcpp_action::create_client<moveit_msgs::action::MoveGroupSequence>(
+        node_, "/sequence_move_group");
 
     tf_sub_ = node_->create_subscription<tf2_msgs::msg::TFMessage>(
         "/tf", 10,
@@ -248,18 +251,12 @@ bool MoveIt2Client::absoluteBaseEefCartesian(const PoseTarget& target){
     return result == moveit::core::MoveItErrorCode::SUCCESS;
 }
 
-bool MoveIt2Client::relativeBaseEefCartesian(const PoseTarget& delta){
-    RCLCPP_INFO(node_->get_logger(),
-                "Sending relative base eef cartesian = "
-                "pos: [%.3f, %.3f, %.3f], ori: [%.3f, %.3f, %.3f]",
-                delta.pos[0], delta.pos[1], delta.pos[2],
-                delta.ori[0], delta.ori[1], delta.ori[2]);
-
+std::optional<PoseTarget> MoveIt2Client::baseDeltaToAbsolute(const PoseTarget& delta){
     move_group_->setEndEffectorLink(eef_name);
     auto robot_state = move_group_->getCurrentState(timeout);
     if (!robot_state) {
-        RCLCPP_ERROR(node_->get_logger(), "getCurrentState failed");
-        return false;
+        RCLCPP_ERROR(node_->get_logger(), "baseDeltaToAbsolute: getCurrentState failed");
+        return std::nullopt;
     }
 
     const Eigen::Isometry3d& eef_transform = robot_state->getGlobalLinkTransform(eef_name);
@@ -274,22 +271,15 @@ bool MoveIt2Client::relativeBaseEefCartesian(const PoseTarget& delta){
     PoseTarget absolute_target;
     absolute_target.pos = {x + delta.pos[0], y + delta.pos[1], z + delta.pos[2]};
     absolute_target.ori = {roll + delta.ori[0], pitch + delta.ori[1], yaw + delta.ori[2]};
-
-    return absoluteBaseEefCartesian(absolute_target);
+    return absolute_target;
 }
 
-bool MoveIt2Client::relativeToolEefCartesian(const PoseTarget& delta){
-    RCLCPP_INFO(node_->get_logger(),
-                "Sending relative tool eef cartesian = "
-                "pos: [%.3f, %.3f, %.3f], ori: [%.3f, %.3f, %.3f]",
-                delta.pos[0], delta.pos[1], delta.pos[2],
-                delta.ori[0], delta.ori[1], delta.ori[2]);
-
+std::optional<PoseTarget> MoveIt2Client::toolDeltaToAbsolute(const PoseTarget& delta){
     move_group_->setEndEffectorLink(eef_name);
     auto robot_state = move_group_->getCurrentState(timeout);
     if (!robot_state) {
-        RCLCPP_ERROR(node_->get_logger(), "getCurrentState failed");
-        return false;
+        RCLCPP_ERROR(node_->get_logger(), "toolDeltaToAbsolute: getCurrentState failed");
+        return std::nullopt;
     }
 
     Eigen::Isometry3d T_base_eef = robot_state->getGlobalLinkTransform(eef_name);
@@ -312,8 +302,133 @@ bool MoveIt2Client::relativeToolEefCartesian(const PoseTarget& delta){
     PoseTarget absolute_target;
     absolute_target.pos = {pos.x(), pos.y(), pos.z()};
     absolute_target.ori = {target_roll, target_pitch, target_yaw};
+    return absolute_target;
+}
 
-    return absoluteBaseEefCartesian(absolute_target);
+bool MoveIt2Client::relativeBaseEefCartesian(const PoseTarget& delta){
+    RCLCPP_INFO(node_->get_logger(),
+                "Sending relative base eef cartesian = "
+                "pos: [%.3f, %.3f, %.3f], ori: [%.3f, %.3f, %.3f]",
+                delta.pos[0], delta.pos[1], delta.pos[2],
+                delta.ori[0], delta.ori[1], delta.ori[2]);
+
+    auto absolute_target = baseDeltaToAbsolute(delta);
+    if (!absolute_target) {
+        return false;
+    }
+    return absoluteBaseEefCartesian(*absolute_target);
+}
+
+bool MoveIt2Client::relativeToolEefCartesian(const PoseTarget& delta){
+    RCLCPP_INFO(node_->get_logger(),
+                "Sending relative tool eef cartesian = "
+                "pos: [%.3f, %.3f, %.3f], ori: [%.3f, %.3f, %.3f]",
+                delta.pos[0], delta.pos[1], delta.pos[2],
+                delta.ori[0], delta.ori[1], delta.ori[2]);
+
+    auto absolute_target = toolDeltaToAbsolute(delta);
+    if (!absolute_target) {
+        return false;
+    }
+    return absoluteBaseEefCartesian(*absolute_target);
+}
+
+bool MoveIt2Client::blendedLinSequence(const std::vector<PoseTarget>& waypoints,
+                                       const std::vector<double>& blend_radii){
+    if (waypoints.empty() || waypoints.size() != blend_radii.size()) {
+        RCLCPP_ERROR(node_->get_logger(),
+            "blendedLinSequence: waypoints (%zu) and blend_radii (%zu) size mismatch",
+            waypoints.size(), blend_radii.size());
+        return false;
+    }
+    if (blend_radii.back() != 0.0) {
+        RCLCPP_ERROR(node_->get_logger(),
+            "blendedLinSequence: last blend_radius must be 0.0 (got %.3f)",
+            blend_radii.back());
+        return false;
+    }
+
+    if (!sequence_client_->wait_for_action_server(std::chrono::duration<double>(timeout))) {
+        RCLCPP_ERROR(node_->get_logger(),
+            "blendedLinSequence: /sequence_move_group action server not available. "
+            "Is the Pilz MoveGroupSequenceAction capability loaded on move_group?");
+        return false;
+    }
+
+    move_group_->setEndEffectorLink(eef_name);
+
+    moveit_msgs::msg::MotionSequenceRequest seq_req;
+    for (size_t i = 0; i < waypoints.size(); ++i) {
+        moveit_msgs::msg::MotionSequenceItem item;
+        item.blend_radius = blend_radii[i];
+
+        auto& req = item.req;
+        req.group_name                      = group_name_;
+        req.pipeline_id                     = "pilz_industrial_motion_planner";
+        req.planner_id                      = "LIN";
+        req.num_planning_attempts           = planning_attempts;
+        req.allowed_planning_time           = planning_time;
+        req.max_velocity_scaling_factor     = vel_scale;
+        req.max_acceleration_scaling_factor = acc_scale;
+
+        geometry_msgs::msg::PoseStamped pose_stamped;
+        pose_stamped.header.frame_id = base_name;
+        pose_stamped.pose = createPose(waypoints[i]);
+
+        req.goal_constraints.push_back(
+            kinematic_constraints::constructGoalConstraints(
+                eef_name, pose_stamped, goal_tol_pos, goal_tol_ang));
+
+        // start_state left default (empty) on the first item so the server uses
+        // the current state; Pilz chains each subsequent item's start to the
+        // previous item's goal.
+        seq_req.items.push_back(item);
+    }
+
+    moveit_msgs::action::MoveGroupSequence::Goal goal;
+    goal.request = seq_req;
+    goal.planning_options.plan_only = false;
+
+    RCLCPP_INFO(node_->get_logger(),
+        "Sending blended LIN sequence with %zu waypoints", waypoints.size());
+
+    auto goal_handle_future = sequence_client_->async_send_goal(goal);
+    if (goal_handle_future.wait_for(std::chrono::duration<double>(timeout)) !=
+            std::future_status::ready) {
+        RCLCPP_ERROR(node_->get_logger(), "blendedLinSequence: send_goal timed out");
+        return false;
+    }
+    auto goal_handle = goal_handle_future.get();
+    if (!goal_handle) {
+        RCLCPP_ERROR(node_->get_logger(), "blendedLinSequence: goal was rejected");
+        return false;
+    }
+
+    auto result_future = sequence_client_->async_get_result(goal_handle);
+    // Sequence execution can take much longer than a single planning call, so
+    // wait without the short service timeout.
+    if (result_future.wait_for(std::chrono::seconds(120)) != std::future_status::ready) {
+        RCLCPP_ERROR(node_->get_logger(), "blendedLinSequence: result timed out");
+        return false;
+    }
+
+    auto wrapped_result = result_future.get();
+    const bool ok =
+        wrapped_result.code == rclcpp_action::ResultCode::SUCCEEDED &&
+        wrapped_result.result &&
+        wrapped_result.result->response.error_code.val ==
+            moveit_msgs::msg::MoveItErrorCodes::SUCCESS;
+
+    if (!ok) {
+        int32_t err = wrapped_result.result
+            ? wrapped_result.result->response.error_code.val : 0;
+        RCLCPP_ERROR(node_->get_logger(),
+            "blendedLinSequence failed (action code=%d, moveit error=%d)",
+            static_cast<int>(wrapped_result.code), err);
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int>(delay_exec * 1000)));
+    return ok;
 }
 
 std::optional<TFResult> MoveIt2Client::lookupTF(const std::string& parent_frame,

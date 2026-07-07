@@ -82,7 +82,16 @@ def launch_setup(context, *args, **kwargs):
         package="moveit_ros_move_group",
         executable="move_group",
         output="screen",
-        parameters=[moveit_config.to_dict(), {"use_sim_time": use_sim_time}],
+        parameters=[
+            moveit_config.to_dict(),
+            {"use_sim_time": use_sim_time},
+            # Load the Pilz sequence capabilities so clients can plan/execute
+            # blended LIN sequences via the /sequence_move_group action.
+            {
+                "capabilities": "pilz_industrial_motion_planner/MoveGroupSequenceAction "
+                                "pilz_industrial_motion_planner/MoveGroupSequenceService",
+            },
+        ],
     )
 
     # RViz config

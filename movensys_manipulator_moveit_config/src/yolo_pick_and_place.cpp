@@ -66,6 +66,17 @@ int main(int argc, char* argv[]) {
     node->declare_parameter("initial_pose", std::vector<double>(6, 0.0));
     node->declare_parameter("scan_pose",    std::vector<double>(6, 0.0));
 
+    // Pilz blended-LIN sequence config. When use_pilz_blend is true the pick
+    // (hover->grasp) and place (lift->box_up->box_down) motions are executed as
+    // single continuous Pilz LIN sequences that blend through the intermediate
+    // hover waypoints instead of stopping at each. Radii are in metres.
+    node->declare_parameter("use_pilz_blend", true);
+    node->declare_parameter("blend_pick",  0.02);
+    node->declare_parameter("blend_lift",  0.05);
+    node->declare_parameter("blend_box",   0.05);
+    node->declare_parameter("goal_tol_pos", 0.001);
+    node->declare_parameter("goal_tol_ang", 0.01);
+
     moveit2_client::MoveIt2Client client(node, "movensys_manipulator_arm");
 
     client.base_name         = node->get_parameter("base_name").as_string();
@@ -80,6 +91,8 @@ int main(int argc, char* argv[]) {
     client.planning_attempts = node->get_parameter("planning_attempts").as_int();
     client.replan            = node->get_parameter("replan").as_bool();
     client.replan_attempts   = node->get_parameter("replan_attempts").as_int();
+    client.goal_tol_pos      = node->get_parameter("goal_tol_pos").as_double();
+    client.goal_tol_ang      = node->get_parameter("goal_tol_ang").as_double();
 
     RCLCPP_INFO(node->get_logger(),
         "[yolo_trajectory] Config: base=%s eef=%s vel=%.2f acc=%.2f max_step=%.2f "
@@ -111,6 +124,11 @@ bool runYoloPickPlace(const rclcpp::Node::SharedPtr& node,
     const double cam_to_grip_yaw = node->get_parameter("cam_to_grip_yaw").as_double();
     const int    max_wait_retries   = node->get_parameter("max_wait_retries").as_int();
     const int    tf_poll_period_ms  = node->get_parameter("tf_poll_period_ms").as_int();
+
+    const bool   use_pilz_blend = node->get_parameter("use_pilz_blend").as_bool();
+    const double blend_pick     = node->get_parameter("blend_pick").as_double();
+    const double blend_lift     = node->get_parameter("blend_lift").as_double();
+    const double blend_box      = node->get_parameter("blend_box").as_double();
 
     const auto initial_pose = toPose(
         node->get_parameter("initial_pose").as_double_array());
@@ -221,28 +239,6 @@ bool runYoloPickPlace(const rclcpp::Node::SharedPtr& node,
              0.0},
             {0.0, 0.0, cam_to_grip_yaw + yaw_tag}
         };
-        if (!client.relativeToolEefCartesian(grip_offset)) {
-            RCLCPP_ERROR(node->get_logger(),
-                "Camera-to-gripper offset move failed for %s", cls.c_str());
-            return false;
-        }
-
-        moveit2_client::PoseTarget down = {{0.0, 0.0, -descent_z}, {0.0, 0.0, 0.0}};
-        if (!client.relativeBaseEefCartesian(down)) {
-            RCLCPP_ERROR(node->get_logger(), "Descend failed for %s", cls.c_str());
-            return false;
-        }
-
-        if (!client.setGripper(true)) {
-            RCLCPP_ERROR(node->get_logger(), "Close gripper failed for %s", cls.c_str());
-            return false;
-        }
-
-        moveit2_client::PoseTarget up = {{0.0, 0.0, descent_z}, {0.0, 0.0, 0.0}};
-        if (!client.relativeBaseEefCartesian(up)) {
-            RCLCPP_ERROR(node->get_logger(), "Lift failed for %s", cls.c_str());
-            return false;
-        }
 
         const auto it = box_poses.find(cls);
         if (it == box_poses.end()) {
@@ -253,21 +249,91 @@ bool runYoloPickPlace(const rclcpp::Node::SharedPtr& node,
         }
         const auto& box = it->second;
 
-        if (!client.absoluteBaseEefCartesian(box.up)) {
-            RCLCPP_ERROR(node->get_logger(), "Move to box-up failed for %s", cls.c_str());
-            return false;
-        }
-        if (!client.absoluteBaseEefCartesian(box.down)) {
-            RCLCPP_ERROR(node->get_logger(), "Move to box-down failed for %s", cls.c_str());
-            return false;
-        }
-        if (!client.setGripper(false)) {
-            RCLCPP_ERROR(node->get_logger(), "Open gripper failed for %s", cls.c_str());
-            return false;
-        }
-        if (!client.absoluteBaseEefCartesian(box.up)) {
-            RCLCPP_ERROR(node->get_logger(), "Retract from box failed for %s", cls.c_str());
-            return false;
+        if (use_pilz_blend) {
+            // Resolve the grip-offset (tool frame) into an absolute hover pose,
+            // and the grasp pose straight below it.
+            auto hover = client.toolDeltaToAbsolute(grip_offset);
+            if (!hover) {
+                RCLCPP_ERROR(node->get_logger(),
+                    "Could not resolve hover pose for %s", cls.c_str());
+                return false;
+            }
+            moveit2_client::PoseTarget grasp = *hover;
+            grasp.pos[2] -= descent_z;
+
+            // PICK: approach hover then descend to grasp as one continuous LIN
+            // motion, blending through the hover instead of stopping at it.
+            if (!client.blendedLinSequence({*hover, grasp}, {blend_pick, 0.0})) {
+                RCLCPP_ERROR(node->get_logger(), "Blended pick failed for %s", cls.c_str());
+                return false;
+            }
+
+            if (!client.setGripper(true)) {
+                RCLCPP_ERROR(node->get_logger(), "Close gripper failed for %s", cls.c_str());
+                return false;
+            }
+
+            // PLACE: lift straight up, transit to the box hover, descend to the
+            // release height — one continuous LIN sequence, stopping only at the
+            // release pose. Blends through the lift apex and the box hover.
+            moveit2_client::PoseTarget lift = grasp;
+            lift.pos[2] += descent_z;
+            if (!client.blendedLinSequence({lift, box.up, box.down},
+                                           {blend_lift, blend_box, 0.0})) {
+                RCLCPP_ERROR(node->get_logger(), "Blended place failed for %s", cls.c_str());
+                return false;
+            }
+
+            if (!client.setGripper(false)) {
+                RCLCPP_ERROR(node->get_logger(), "Open gripper failed for %s", cls.c_str());
+                return false;
+            }
+
+            // RETRACT above the box before scanning the next cube.
+            if (!client.blendedLinSequence({box.up}, {0.0})) {
+                RCLCPP_ERROR(node->get_logger(), "Retract from box failed for %s", cls.c_str());
+                return false;
+            }
+        } else {
+            if (!client.relativeToolEefCartesian(grip_offset)) {
+                RCLCPP_ERROR(node->get_logger(),
+                    "Camera-to-gripper offset move failed for %s", cls.c_str());
+                return false;
+            }
+
+            moveit2_client::PoseTarget down = {{0.0, 0.0, -descent_z}, {0.0, 0.0, 0.0}};
+            if (!client.relativeBaseEefCartesian(down)) {
+                RCLCPP_ERROR(node->get_logger(), "Descend failed for %s", cls.c_str());
+                return false;
+            }
+
+            if (!client.setGripper(true)) {
+                RCLCPP_ERROR(node->get_logger(), "Close gripper failed for %s", cls.c_str());
+                return false;
+            }
+
+            moveit2_client::PoseTarget up = {{0.0, 0.0, descent_z}, {0.0, 0.0, 0.0}};
+            if (!client.relativeBaseEefCartesian(up)) {
+                RCLCPP_ERROR(node->get_logger(), "Lift failed for %s", cls.c_str());
+                return false;
+            }
+
+            if (!client.absoluteBaseEefCartesian(box.up)) {
+                RCLCPP_ERROR(node->get_logger(), "Move to box-up failed for %s", cls.c_str());
+                return false;
+            }
+            if (!client.absoluteBaseEefCartesian(box.down)) {
+                RCLCPP_ERROR(node->get_logger(), "Move to box-down failed for %s", cls.c_str());
+                return false;
+            }
+            if (!client.setGripper(false)) {
+                RCLCPP_ERROR(node->get_logger(), "Open gripper failed for %s", cls.c_str());
+                return false;
+            }
+            if (!client.absoluteBaseEefCartesian(box.up)) {
+                RCLCPP_ERROR(node->get_logger(), "Retract from box failed for %s", cls.c_str());
+                return false;
+            }
         }
 
         RCLCPP_INFO(node->get_logger(), "  %s placed successfully.", cls.c_str());

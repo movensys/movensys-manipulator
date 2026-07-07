@@ -24,6 +24,7 @@ find_package(trajectory_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(moveit_ros_planning_interface REQUIRED)
+find_package(moveit_core REQUIRED)
 find_package(moveit_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
@@ -53,8 +54,10 @@ add_library(moveit2_client_lib SHARED
 )
 ament_target_dependencies(moveit2_client_lib
   rclcpp
+  rclcpp_action
   std_srvs
   moveit_ros_planning_interface
+  moveit_core
   moveit_msgs
   geometry_msgs
   tf2_ros
@@ -167,8 +170,10 @@ install(TARGETS moveit2_client_lib isaacsim_bridge gazebo_bridge
 ament_export_targets(export_moveit2_client_lib HAS_LIBRARY_TARGET)
 ament_export_dependencies(
   rclcpp
+  rclcpp_action
   std_srvs
   moveit_ros_planning_interface
+  moveit_core
   moveit_msgs
   geometry_msgs
   tf2_ros
