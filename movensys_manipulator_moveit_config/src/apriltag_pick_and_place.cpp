@@ -193,29 +193,43 @@ bool runAprilTagPickPlace(const rclcpp::Node::SharedPtr& node,
             return false;
         }
 
+        // Build the approach as ONE continuous Cartesian move that passes THROUGH
+        // the target-centre ("top") pose without stopping, then descends to grasp.
+        auto cur_pose = client.currentPoseAsPoseTarget();
+        if (!cur_pose.has_value()) {
+            RCLCPP_ERROR(node->get_logger(),
+                "Failed to read current pose before approach"); return false; }
+
+        // Via point (target centre): tag/target offset applied in the TOOL frame.
         moveit2_client::PoseTarget target_offset = {
             {tag_to_target_x + x_tag, tag_to_target_y + y_tag, 0.0},
             {0.0, 0.0, tag_to_target_yaw + yaw_tag}
         };
-        if (!client.relativeToolEefCartesian(target_offset)) {
-            RCLCPP_ERROR(node->get_logger(), "Move to target center failed"); return false; }
+        const auto top = moveit2_client::MoveIt2Client::composeToolDelta(
+            cur_pose.value(), target_offset);
+
+        // Grasp point: straight down from the via point in the BASE frame.
+        const auto grasp = moveit2_client::MoveIt2Client::composeBaseDelta(
+            top, {{0.0, 0.0, -tag_down_z}, {0.0, 0.0, 0.0}});
 
         if (target_spawn) {
-            auto eef_tf = client.getCurrentEefPose();
-            if (!eef_tf.has_value()) {
-                RCLCPP_ERROR(node->get_logger(), "Failed to get current EEF pose"); return false; }
+            // Teleport the target in Isaac Sim at the grasp x/y. Derived from the
+            // "top" pose since the descent is a pure base-frame Z translation, so
+            // x/y/orientation are identical at "top" and "grasp".
+            tf2::Quaternion q_top;
+            q_top.setRPY(top.ori[0], top.ori[1], top.ori[2]);
 
-            double x_eef = -eef_tf->y;
-            double y_eef =  eef_tf->x;
+            double x_eef = -top.pos[1];
+            double y_eef =  top.pos[0];
 
             std::string pose_str =
                 "{position: {x: "    + std::to_string(x_eef) +
                 ", y: "              + std::to_string(y_eef) +
                 ", z: "              + std::to_string(z_target_pose_spawn) + "}" +
-                ", orientation: {x: "+ std::to_string(eef_tf->qx) +
-                ", y: "              + std::to_string(eef_tf->qy) +
-                ", z: "              + std::to_string(eef_tf->qz) +
-                ", w: "              + std::to_string(eef_tf->qw) + "}}";
+                ", orientation: {x: "+ std::to_string(q_top.x()) +
+                ", y: "              + std::to_string(q_top.y()) +
+                ", z: "              + std::to_string(q_top.z()) +
+                ", w: "              + std::to_string(q_top.w()) + "}}";
 
             RCLCPP_INFO(node->get_logger(),
                 "Teleport target pose in Isaac Sim: %s", pose_str.c_str());
@@ -226,9 +240,9 @@ bool runAprilTagPickPlace(const rclcpp::Node::SharedPtr& node,
             RCLCPP_INFO(node->get_logger(), "ros2 topic pub result: %d", result);
         }
 
-        moveit2_client::PoseTarget down_delta = {{0.0, 0.0, -tag_down_z}, {0.0, 0.0, 0.0}};
-        if (!client.relativeBaseEefCartesian(down_delta)) {
-            RCLCPP_ERROR(node->get_logger(), "Move down failed"); return false; }
+        if (!client.cartesianPath({top, grasp})) {
+            RCLCPP_ERROR(node->get_logger(),
+                "Approach-and-descend failed"); return false; }
 
         if (!client.setGripper(true)) {
             RCLCPP_ERROR(node->get_logger(), "Failed to close gripper"); return false; }
