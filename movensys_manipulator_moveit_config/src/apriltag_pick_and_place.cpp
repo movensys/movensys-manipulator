@@ -70,6 +70,16 @@ int main(int argc, char* argv[]) {
     node->declare_parameter("box_up_3",   std::vector<double>(6, 0.0));
     node->declare_parameter("box_down_3", std::vector<double>(6, 0.0));
 
+    // Pilz blended-LIN pick. When true the target-offset move and the descent
+    // to grasp are executed as a single continuous LIN sequence that blends
+    // through the hover instead of stopping at it. The joint-space transit to
+    // the drop box is left unchanged (Pilz blends reliably only between LIN
+    // segments), so the place side is unaffected by this toggle.
+    node->declare_parameter("use_pilz_blend", true);
+    node->declare_parameter("blend_pick",   0.02);
+    node->declare_parameter("goal_tol_pos", 0.001);
+    node->declare_parameter("goal_tol_ang", 0.01);
+
     moveit2_client::MoveIt2Client client(node, "movensys_manipulator_arm");
 
     client.base_name         = node->get_parameter("base_name").as_string();
@@ -84,6 +94,8 @@ int main(int argc, char* argv[]) {
     client.planning_attempts = node->get_parameter("planning_attempts").as_int();
     client.replan            = node->get_parameter("replan").as_bool();
     client.replan_attempts   = node->get_parameter("replan_attempts").as_int();
+    client.goal_tol_pos      = node->get_parameter("goal_tol_pos").as_double();
+    client.goal_tol_ang      = node->get_parameter("goal_tol_ang").as_double();
 
     RCLCPP_INFO(node->get_logger(),
         "Config: base_name=%s, eef_name=%s, vel_scale=%.2f, acc_scale=%.2f, "
@@ -128,6 +140,9 @@ bool runAprilTagPickPlace(const rclcpp::Node::SharedPtr& node,
     const double tag_to_target_x     = node->get_parameter("tag_to_target_x").as_double();
     const double tag_to_target_y     = node->get_parameter("tag_to_target_y").as_double();
     const double tag_to_target_yaw   = node->get_parameter("tag_to_target_yaw").as_double();
+
+    const bool   use_pilz_blend = node->get_parameter("use_pilz_blend").as_bool();
+    const double blend_pick     = node->get_parameter("blend_pick").as_double();
 
     const auto joint_names  = node->get_parameter("joint_names").as_string_array();
     const auto initial_pose = toJointMap(
@@ -197,25 +212,46 @@ bool runAprilTagPickPlace(const rclcpp::Node::SharedPtr& node,
             {tag_to_target_x + x_tag, tag_to_target_y + y_tag, 0.0},
             {0.0, 0.0, tag_to_target_yaw + yaw_tag}
         };
-        if (!client.relativeToolEefCartesian(target_offset)) {
-            RCLCPP_ERROR(node->get_logger(), "Move to target center failed"); return false; }
+
+        // Resolve the tool-frame offset into an absolute hover pose. In blend
+        // mode this is the first waypoint of the pick sequence (not executed
+        // separately); otherwise the centering move is executed here.
+        auto hover = client.toolDeltaToAbsolute(target_offset);
+        if (!hover) {
+            RCLCPP_ERROR(node->get_logger(), "Could not resolve hover pose"); return false; }
+
+        if (!use_pilz_blend) {
+            if (!client.relativeToolEefCartesian(target_offset)) {
+                RCLCPP_ERROR(node->get_logger(), "Move to target center failed"); return false; }
+        }
 
         if (target_spawn) {
-            auto eef_tf = client.getCurrentEefPose();
-            if (!eef_tf.has_value()) {
-                RCLCPP_ERROR(node->get_logger(), "Failed to get current EEF pose"); return false; }
-
-            double x_eef = -eef_tf->y;
-            double y_eef =  eef_tf->x;
+            // Teleport the target to the hover pose. Use the analytic hover in
+            // blend mode; otherwise read back the executed EEF pose.
+            double x_eef, y_eef, qx, qy, qz, qw;
+            if (use_pilz_blend) {
+                auto hover_pose = moveit2_client::MoveIt2Client::createPose(*hover);
+                x_eef = -hover->pos[1];
+                y_eef =  hover->pos[0];
+                qx = hover_pose.orientation.x; qy = hover_pose.orientation.y;
+                qz = hover_pose.orientation.z; qw = hover_pose.orientation.w;
+            } else {
+                auto eef_tf = client.getCurrentEefPose();
+                if (!eef_tf.has_value()) {
+                    RCLCPP_ERROR(node->get_logger(), "Failed to get current EEF pose"); return false; }
+                x_eef = -eef_tf->y;
+                y_eef =  eef_tf->x;
+                qx = eef_tf->qx; qy = eef_tf->qy; qz = eef_tf->qz; qw = eef_tf->qw;
+            }
 
             std::string pose_str =
                 "{position: {x: "    + std::to_string(x_eef) +
                 ", y: "              + std::to_string(y_eef) +
                 ", z: "              + std::to_string(z_target_pose_spawn) + "}" +
-                ", orientation: {x: "+ std::to_string(eef_tf->qx) +
-                ", y: "              + std::to_string(eef_tf->qy) +
-                ", z: "              + std::to_string(eef_tf->qz) +
-                ", w: "              + std::to_string(eef_tf->qw) + "}}";
+                ", orientation: {x: "+ std::to_string(qx) +
+                ", y: "              + std::to_string(qy) +
+                ", z: "              + std::to_string(qz) +
+                ", w: "              + std::to_string(qw) + "}}";
 
             RCLCPP_INFO(node->get_logger(),
                 "Teleport target pose in Isaac Sim: %s", pose_str.c_str());
@@ -226,9 +262,18 @@ bool runAprilTagPickPlace(const rclcpp::Node::SharedPtr& node,
             RCLCPP_INFO(node->get_logger(), "ros2 topic pub result: %d", result);
         }
 
-        moveit2_client::PoseTarget down_delta = {{0.0, 0.0, -tag_down_z}, {0.0, 0.0, 0.0}};
-        if (!client.relativeBaseEefCartesian(down_delta)) {
-            RCLCPP_ERROR(node->get_logger(), "Move down failed"); return false; }
+        if (use_pilz_blend) {
+            // PICK: approach hover then descend to grasp as one continuous LIN
+            // motion, blending through the hover instead of stopping at it.
+            moveit2_client::PoseTarget grasp = *hover;
+            grasp.pos[2] -= tag_down_z;
+            if (!client.blendedLinSequence({*hover, grasp}, {blend_pick, 0.0})) {
+                RCLCPP_ERROR(node->get_logger(), "Blended pick failed"); return false; }
+        } else {
+            moveit2_client::PoseTarget down_delta = {{0.0, 0.0, -tag_down_z}, {0.0, 0.0, 0.0}};
+            if (!client.relativeBaseEefCartesian(down_delta)) {
+                RCLCPP_ERROR(node->get_logger(), "Move down failed"); return false; }
+        }
 
         if (!client.setGripper(true)) {
             RCLCPP_ERROR(node->get_logger(), "Failed to close gripper"); return false; }

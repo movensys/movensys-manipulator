@@ -7,6 +7,15 @@ apriltag_pick_and_place:
 
     z_target_pose_spawn: 0.07
     tag_down_z:          0.11
+
+    # Pilz blended-LIN pick. When true the target-offset move and the descent
+    # to grasp run as one continuous LIN sequence, blending through the hover.
+    # The joint-space transit to the drop box is unchanged (place side unaffected).
+    use_pilz_blend: true
+    blend_pick:   0.02       # [m] < offset segment and < tag_down_z (0.11)
+    goal_tol_pos: 0.001      # [m]   LIN goal position tolerance
+    goal_tol_ang: 0.01       # [rad] LIN goal orientation tolerance
+
     tag_tol_pose:        0.03
     tag_tol_orientation: 0.05
     tag_to_target_x:     0.01
