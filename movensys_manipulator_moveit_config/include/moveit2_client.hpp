@@ -53,6 +53,8 @@ class MoveIt2Client{
 
         std::string base_name;
         std::string eef_name;
+        std::string pipeline_id;
+        std::string planner_id;
         double vel_scale;
         double acc_scale;
         double max_step;

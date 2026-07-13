@@ -2,6 +2,13 @@
   ros__parameters:
     base_name:         "world_manipulator"
     eef_name:          "Link6"
+    # Planning pipeline / planner selection.
+    #   pipeline_id: "" or "ompl" -> OMPL (default free-space planner)
+    #                "pilz_industrial_motion_planner" -> Pilz industrial planner
+    #   planner_id:  PTP (joint-space point-to-point) | LIN (Cartesian straight line)
+    #                | CIRC (circular). Ignored when pipeline_id is empty/OMPL.
+    pipeline_id:       "pilz_industrial_motion_planner"
+    planner_id:        "PTP"
     vel_scale:         0.9
     acc_scale:         0.9
     delay_exec:        0.3

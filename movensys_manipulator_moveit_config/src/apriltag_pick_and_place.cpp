@@ -39,6 +39,8 @@ int main(int argc, char* argv[]) {
     node->declare_parameter("planning_attempts", 0);
     node->declare_parameter("replan",            true);
     node->declare_parameter("replan_attempts",   0);
+    node->declare_parameter("pipeline_id",       "");
+    node->declare_parameter("planner_id",        "");
 
     // AprilTag pick-and-place config
     node->declare_parameter<bool>("target_spawn",  true);
@@ -84,6 +86,8 @@ int main(int argc, char* argv[]) {
     client.planning_attempts = node->get_parameter("planning_attempts").as_int();
     client.replan            = node->get_parameter("replan").as_bool();
     client.replan_attempts   = node->get_parameter("replan_attempts").as_int();
+    client.pipeline_id       = node->get_parameter("pipeline_id").as_string();
+    client.planner_id        = node->get_parameter("planner_id").as_string();
 
     RCLCPP_INFO(node->get_logger(),
         "Config: base_name=%s, eef_name=%s, vel_scale=%.2f, acc_scale=%.2f, "

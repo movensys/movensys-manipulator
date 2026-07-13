@@ -41,6 +41,10 @@ int main(int argc, char* argv[]){
     client.planning_attempts = node->get_parameter("planning_attempts").as_int();
     client.replan            = node->get_parameter("replan").as_bool();
     client.replan_attempts   = node->get_parameter("replan_attempts").as_int();
+    // pipeline_id / planner_id are auto-declared from the parameter overrides
+    // (moveit2_client.yaml) via automatically_declare_parameters_from_overrides.
+    client.pipeline_id       = node->get_parameter("pipeline_id").as_string();
+    client.planner_id        = node->get_parameter("planner_id").as_string();
 
     RCLCPP_INFO(node->get_logger(),
         "Config: base_name=%s, eef_name=%s, vel_scale=%.2f, acc_scale=%.2f, "

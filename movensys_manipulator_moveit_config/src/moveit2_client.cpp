@@ -100,6 +100,15 @@ bool MoveIt2Client::jointMovement(const std::map<std::string, double>& joint_tar
     targets_str += " }";
 
     move_group_->setEndEffectorLink(eef_name);
+    // Select the planning pipeline / planner when configured. Leaving either
+    // empty preserves the MoveIt default pipeline (OMPL). For Pilz, set
+    // pipeline_id="pilz_industrial_motion_planner" and planner_id to PTP/LIN/CIRC.
+    if (!pipeline_id.empty()) {
+        move_group_->setPlanningPipelineId(pipeline_id);
+    }
+    if (!planner_id.empty()) {
+        move_group_->setPlannerId(planner_id);
+    }
     move_group_->setPlanningTime(planning_time);
     move_group_->setMaxVelocityScalingFactor(vel_scale);
     move_group_->setMaxAccelerationScalingFactor(acc_scale);
@@ -159,6 +168,15 @@ bool MoveIt2Client::relativeJointMovement(const std::map<std::string, double>& j
 
 bool MoveIt2Client::absoluteBaseEefJointMovement(const PoseTarget& target){
     move_group_->setEndEffectorLink(eef_name);
+    // Select the planning pipeline / planner when configured. Leaving either
+    // empty preserves the MoveIt default pipeline (OMPL). For Pilz, set
+    // pipeline_id="pilz_industrial_motion_planner" and planner_id to PTP/LIN/CIRC.
+    if (!pipeline_id.empty()) {
+        move_group_->setPlanningPipelineId(pipeline_id);
+    }
+    if (!planner_id.empty()) {
+        move_group_->setPlannerId(planner_id);
+    }
     move_group_->setPlanningTime(planning_time);
     move_group_->setMaxVelocityScalingFactor(vel_scale);
     move_group_->setMaxAccelerationScalingFactor(acc_scale);

@@ -1,6 +1,8 @@
-# Cartesian limits for the Pilz planner
+# Cartesian limits for the Pilz planner (used by the LIN / CIRC planners).
+# Tune conservatively, then raise after validating on hardware. PTP moves are
+# bounded by joint_limits.yaml instead and are unaffected by these values.
 cartesian_limits:
-  max_trans_vel: 0.01
-  max_trans_acc: 0.01
-  max_trans_dec: 0.01
-  max_rot_vel: 0.174533
+  max_trans_vel: 0.25      # m/s
+  max_trans_acc: 0.5       # m/s^2
+  max_trans_dec: 0.5       # m/s^2
+  max_rot_vel: 0.5         # rad/s

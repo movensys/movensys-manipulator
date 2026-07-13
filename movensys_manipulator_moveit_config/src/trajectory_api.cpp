@@ -27,6 +27,8 @@ MoveIt2ApiNode::MoveIt2ApiNode(){
     node_->declare_parameter("planning_attempts", 0);
     node_->declare_parameter("replan",            true);
     node_->declare_parameter("replan_attempts",   0);
+    node_->declare_parameter("pipeline_id",       "");
+    node_->declare_parameter("planner_id",        "");
 
     client_ = std::make_shared<moveit2_client::MoveIt2Client>(node_, "movensys_manipulator_arm");
 
@@ -41,6 +43,8 @@ MoveIt2ApiNode::MoveIt2ApiNode(){
     client_->planning_attempts = node_->get_parameter("planning_attempts").as_int();
     client_->replan            = node_->get_parameter("replan").as_bool();
     client_->replan_attempts   = node_->get_parameter("replan_attempts").as_int();
+    client_->pipeline_id       = node_->get_parameter("pipeline_id").as_string();
+    client_->planner_id        = node_->get_parameter("planner_id").as_string();
 
     // Live vel_scale / acc_scale updates via ROS2 parameter service
     param_cb_handle_ = node_->add_on_set_parameters_callback(

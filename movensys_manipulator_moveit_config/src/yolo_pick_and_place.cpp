@@ -47,6 +47,8 @@ int main(int argc, char* argv[]) {
     node->declare_parameter("planning_attempts", 5);
     node->declare_parameter("replan",            true);
     node->declare_parameter("replan_attempts",   5);
+    node->declare_parameter("pipeline_id",       "");
+    node->declare_parameter("planner_id",        "");
 
     // YOLO pick-and-place config
     node->declare_parameter<std::string>("camera_frame", "camera_hand_link_color_optical_frame");
@@ -80,6 +82,8 @@ int main(int argc, char* argv[]) {
     client.planning_attempts = node->get_parameter("planning_attempts").as_int();
     client.replan            = node->get_parameter("replan").as_bool();
     client.replan_attempts   = node->get_parameter("replan_attempts").as_int();
+    client.pipeline_id       = node->get_parameter("pipeline_id").as_string();
+    client.planner_id        = node->get_parameter("planner_id").as_string();
 
     RCLCPP_INFO(node->get_logger(),
         "[yolo_trajectory] Config: base=%s eef=%s vel=%.2f acc=%.2f max_step=%.2f "
