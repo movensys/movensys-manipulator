@@ -1,4 +1,4 @@
-# 1. RGB Recording & Video Conversion
+# RGB Recording & Video Conversion
 
 - Recording `record_rgb` topic via rosbag command.
 - Bag of commands for converting the rosbag results to mp4 or gif videos.
