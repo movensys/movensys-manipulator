@@ -111,6 +111,19 @@ void IsaacSimBridge::setGripper(const std::shared_ptr<std_srvs::srv::SetBool::Re
 
     sensor_msgs::msg::JointState joint_command = last_joint_state_;
 
+    // Guard against an empty/short cached joint state: the subtraction below is
+    // unsigned, so position.size() < gripper_joint_names_.size() would underflow
+    // to a huge index and write out of bounds (segfault). This happens when
+    // set_gripper is called before a valid /joint_states message has arrived.
+    if (joint_command.position.size() < gripper_joint_names_.size()) {
+        RCLCPP_WARN(this->get_logger(),
+            "set_gripper ignored: joint state not ready yet "
+            "(%zu positions cached, need at least %zu)",
+            joint_command.position.size(), gripper_joint_names_.size());
+        response->success = false;
+        return;
+    }
+
     const size_t gripper_joint_start_index =
         joint_command.position.size() - gripper_joint_names_.size();
     for (size_t i = 0; i < gripper_joint_names_.size(); ++i) {

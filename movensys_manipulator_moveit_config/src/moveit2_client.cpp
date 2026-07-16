@@ -221,8 +221,44 @@ bool MoveIt2Client::absoluteBaseEefCartesian(const PoseTarget& target){
                 target.pos[0], target.pos[1], target.pos[2],
                 target.ori[0], target.ori[1], target.ori[2]);
 
+    const geometry_msgs::msg::Pose pose = createPose(target);
+
+    // When the Pilz pipeline is selected, plan a Cartesian straight line with
+    // the LIN planner through the planning pipeline (bounded by
+    // pilz_cartesian_limits.yaml). LIN is used regardless of the configured
+    // planner_id, since these calls are Cartesian straight-line moves by
+    // contract (planner_id/PTP drives the free-space joint/pose moves).
+    // Otherwise fall back to MoveIt's computeCartesianPath interpolator.
+    if (pipeline_id == "pilz_industrial_motion_planner") {
+        move_group_->setPlanningPipelineId(pipeline_id);
+        move_group_->setPlannerId("LIN");
+        move_group_->setMaxVelocityScalingFactor(vel_scale);
+        move_group_->setMaxAccelerationScalingFactor(acc_scale);
+        move_group_->setNumPlanningAttempts(planning_attempts);
+        move_group_->allowReplanning(replan);
+        move_group_->setPoseTarget(pose);
+
+        // Pilz LIN planning is deterministic for a given start/goal, so retrying
+        // on failure does not help. Try once; if it fails, fall back to
+        // computeCartesianPath below.
+        moveit::core::MoveItErrorCode lin_result = move_group_->move();
+        if (lin_result == moveit::core::MoveItErrorCode::SUCCESS) {
+            std::this_thread::sleep_for(
+                std::chrono::milliseconds(static_cast<int>(delay_exec * 1000)));
+            return true;
+        }
+        // Pilz LIN often fails to plan on this arm because it calls the IK
+        // plugin directly per waypoint and KDL cannot solve many reachable
+        // poses ("Unable to find IK solution"). Fall back to the more forgiving
+        // computeCartesianPath interpolator so the motion still completes.
+        RCLCPP_WARN(node_->get_logger(),
+            "Pilz LIN planning failed; falling back to computeCartesianPath for this move");
+        move_group_->clearPoseTargets();
+        // fall through to the computeCartesianPath implementation below
+    }
+
     std::vector<geometry_msgs::msg::Pose> waypoints;
-    waypoints.push_back(createPose(target));
+    waypoints.push_back(pose);
 
     moveit_msgs::msg::RobotTrajectory trajectory_msg;
 
