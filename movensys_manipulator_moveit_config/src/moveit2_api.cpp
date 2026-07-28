@@ -1,7 +1,7 @@
 // Copyright 2026 Movensys Corporation.
 // Licensed under the MIT License. See LICENSE.txt for details.
 
-#include "trajectory_api.hpp"
+#include "moveit2_api.hpp"
 
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <tf2/LinearMath/Quaternion.h>
@@ -14,7 +14,7 @@
 #include <vector>
 
 MoveIt2ApiNode::MoveIt2ApiNode(){
-    node_ = std::make_shared<rclcpp::Node>("trajectory_api");
+    node_ = std::make_shared<rclcpp::Node>("moveit2_api");
 
     node_->declare_parameter("base_name",         "base");
     node_->declare_parameter("eef_name",         "eef");

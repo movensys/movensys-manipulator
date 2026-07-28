@@ -199,12 +199,12 @@ def launch_setup(context: LaunchContext, *args, **kwargs) -> List[Node]:
         ],
     )
 
-    api_launch = IncludeLaunchDescription(
+    moveit2_api_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution([
                 FindPackageShare('movensys_manipulator_moveit_config'),
                 'launch',
-                'trajectory_service.launch.py',
+                'moveit2_api.launch.py',
             ])
         ),
         launch_arguments={'use_sim_time': use_sim_time}.items(),
@@ -242,7 +242,7 @@ def launch_setup(context: LaunchContext, *args, **kwargs) -> List[Node]:
         move_group_node,
         cumotion_planner_node,
         rviz_node,
-        api_launch,
+        moveit2_api_launch,
         servo_container,
     ]
 

@@ -154,9 +154,9 @@ ament_target_dependencies(yolo_pick_and_place_cpp
   std_srvs
 )
 
-add_executable(trajectory_api src/trajectory_api.cpp)
-target_link_libraries(trajectory_api moveit2_client_lib)
-ament_target_dependencies(trajectory_api
+add_executable(moveit2_api src/moveit2_api.cpp)
+target_link_libraries(moveit2_api moveit2_client_lib)
+ament_target_dependencies(moveit2_api
   rclcpp
   moveit_ros_planning_interface
   moveit_msgs
@@ -165,14 +165,14 @@ ament_target_dependencies(trajectory_api
 )
 
 rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
-target_link_libraries(trajectory_api ${cpp_typesupport_target})
+target_link_libraries(moveit2_api ${cpp_typesupport_target})
 
 install(TARGETS
   trajectory_test
   coverage_pose
   obstacle_avoidance_cpp
   apriltag_pick_and_place
-  trajectory_api
+  moveit2_api
   yolo_pick_and_place_cpp
   DESTINATION lib/${PROJECT_NAME}
 )

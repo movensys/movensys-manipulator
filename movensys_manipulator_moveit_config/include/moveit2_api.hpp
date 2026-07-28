@@ -1,8 +1,8 @@
 // Copyright 2026 Movensys Corporation.
 // Licensed under the MIT License. See LICENSE.txt for details.
 
-#ifndef TRAJECTORY_API_HPP_
-#define TRAJECTORY_API_HPP_
+#ifndef MOVEIT2_API_HPP_
+#define MOVEIT2_API_HPP_
 
 #include <map>
 #include <memory>
@@ -69,4 +69,4 @@ private:
     rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_cb_handle_;
 };
 
-#endif  // TRAJECTORY_API_HPP_
+#endif  // MOVEIT2_API_HPP_
