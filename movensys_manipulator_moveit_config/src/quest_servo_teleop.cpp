@@ -96,7 +96,7 @@ public:
         // isaacsim_bridge publishes this while a move_group plan executes; the
         // gazebo bridge does not (harmless -- stays false there).
         exec_sub_ = node_->create_subscription<std_msgs::msg::Bool>(
-            "/bridge/execution_active", rclcpp::QoS(1).transient_local(),
+            "/moveit2_trajectory/execution_active", rclcpp::QoS(1).transient_local(),
             std::bind(&QuestServoTeleop::onExecActive, this, std::placeholders::_1));
 
         tf_buffer_   = std::make_shared<tf2_ros::Buffer>(node_->get_clock());

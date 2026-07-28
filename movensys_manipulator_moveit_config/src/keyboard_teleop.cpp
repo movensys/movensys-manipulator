@@ -128,7 +128,7 @@ public:
         // While move_group executes a trajectory, pause POSE streaming and
         // re-anchor the target when it finishes (transient_local = catch last state).
         exec_sub_ = node_->create_subscription<std_msgs::msg::Bool>(
-            "/bridge/execution_active", rclcpp::QoS(1).transient_local(),
+            "/moveit2_trajectory/execution_active", rclcpp::QoS(1).transient_local(),
             std::bind(&KeyboardServo::cbExecActive, this, std::placeholders::_1));
     }
 
