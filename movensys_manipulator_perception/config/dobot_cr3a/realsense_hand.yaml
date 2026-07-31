@@ -1,7 +1,7 @@
 /**:
   ros__parameters:
     device_type: ''
-    serial_no: '333422302722'
+    serial_no: '333422300962'
     usb_port_id: ''
 
     enable_accel: false

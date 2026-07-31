@@ -5,8 +5,18 @@ yolo_cube_detector:
     confidence_threshold: 0.5
 
     # Scene geometry (scan pose). cube_height = floor + cube top surface.
-    cube_height: 0.05 # origin value => 0.038, total height => board height + cube height
-    cam_z_world: 0.5   # original value => 0.45
+    cube_height: 0.04 # origin value => 0.038, total height => board height + cube height
+    # Optical-centre height in the same datum as cube_height (table top =
+    # world_manipulator z=0) = scan_pose z (0.400) minus the camera's measured
+    # drop below the Link6 flange (0.080). Measured directly: camera sits 0.32
+    # above the table when the end effector is at 0.40.
+    # NOTE: only (cam_z_world - cube_height) enters the projection, and it acts
+    # as the visual-servo proportional gain:
+    #     reported offset = (cam_z_world - cube_height) * normalised pixel offset
+    # so cam_z_world and cube_height are one knob, not two. Raising it makes the
+    # servo overshoot. Derive it from the geometry above; do not tune it to
+    # absorb camera-tilt error (see cam_orientation).
+    cam_z_world: 0.33
     cam_x_world: 0.0
     cam_y_world: 0.0
     # Optical-frame orientation in world, [x, y, z, w] (scan RPY = (π, 0, π))
@@ -14,7 +24,7 @@ yolo_cube_detector:
 
     publish_debug_image: true
     # device: cpu | cuda | AUTO | intel:cpu | intel:gpu | intel:npu
-    device: "cpu"
+    device: "cuda"
 
     image_topic: "/image_hand/rgb"
     camera_info_topic: "/image_hand/camera_info"

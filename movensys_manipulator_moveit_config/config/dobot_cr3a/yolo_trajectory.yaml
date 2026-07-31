@@ -17,7 +17,7 @@ yolo_pick_and_place_cpp:
     tol_orientation: 0.05    # [rad] yaw convergence
 
     # Vertical descent from hover pose to grasp pose.
-    descent_z: 0.21          # [m]
+    descent_z: 0.12          # [m]
 
     # Camera-optical-centre to gripper-centre offset, expressed in the tool frame.
     cam_to_grip_x:    0.015  # [m] original => 0.015
@@ -36,7 +36,7 @@ yolo_pick_and_place_cpp:
     initial_pose: [-0.0003, 0.7041, -1.9892, -0.2873, 1.57, 0.0]
 
     # Scan pose is a Cartesian pose [x, y, z, roll, pitch, yaw] reached via IK.
-    scan_pose:    [-0.230, -0.070, 0.500,  3.141, 0.0, 3.141]
+    scan_pose:    [-0.230, -0.070, 0.400,  3.141, 0.0, 3.141]
 
     # Drop-box poses per class: "_up" is the hover pose, "_down" is the release height.
     box_green_up:    [0.13, -0.17, 0.400, 3.141, 0.0, 3.108]

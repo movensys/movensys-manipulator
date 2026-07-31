@@ -26,6 +26,8 @@ def generate_launch_description():
         ),
     ]
 
+    # One camera shared by both detectors, so the cube launcher's own
+    # camera_hand include is suppressed below via launch_camera:=false.
     camera_hand_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(pkg_share, 'launch', 'camera_hand.launch.py')
@@ -39,7 +41,10 @@ def generate_launch_description():
             PythonLaunchDescriptionSource(
                 os.path.join(pkg_share, 'launch', 'yolo_cube_detector.launch.py')
             ),
-            launch_arguments={'use_sim_time': use_sim_time}.items(),
+            launch_arguments={
+                'use_sim_time': use_sim_time,
+                'launch_camera': 'false',
+            }.items(),
         ),
         PopLaunchConfigurations(),
     ])
