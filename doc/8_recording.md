@@ -27,6 +27,7 @@ alias ros_record='ros2 bag record -o ~/recordings/$record_name record_rgb'
 alias activate_record='source ~/.venvs/rosbag2video/bin/activate'
 alias bag2mp4='python3 ~/rosbag2video/rosbag2video.py -t /record_rgb -r 15 -o ${record_dir}/${record_name}.mp4 ~/recordings/${record_name}'
 alias mp42gif='static_ffmpeg -i ${record_dir}/${record_name}.mp4 -vf "fps=15,scale=1280:-1:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse" ${record_dir}/${record_name}.gif'
+alias gif2mp4='static_ffmpeg -i ${record_dir}/${record_name}.gif -movflags faststart -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" -pix_fmt yuv420p ${record_dir}/${record_name}_from_gif.mp4'
 ```
 
 # 3. Useful commands
@@ -57,6 +58,15 @@ bag2mp4
 mp42gif
 ```
 
+## Step 5. gif → mp4 (optional)
+
+- Only needed when the mp4 is lost or the gif was edited afterwards.
+- Output is `${record_name}_from_gif.mp4`, so the original mp4 is never overwritten.
+
+```bash
+gif2mp4
+```
+
 # 4. Extensions
 
 ## 4-1. Speed up / slow down (x times)
@@ -74,7 +84,7 @@ static_ffmpeg -i ${record_dir}/${record_name}.mp4 -filter:v "setpts=PTS/$speed" 
 ### gif
 
 ```bash
-speed=2
+speed=1.5
 static_ffmpeg -i ${record_dir}/${record_name}.gif -filter:v "setpts=PTS/$speed,split[a][b];[a]palettegen[p];[b][p]paletteuse" ${record_dir}/${record_name}_${speed}.gif
 ```
 
@@ -103,7 +113,7 @@ static_ffmpeg -i ${record_dir}/${record_name}.mp4 -vf "scale=trunc(iw*${ratio}/2
 ### gif (by target width)
 
 ```bash
-width=480
+width=640
 static_ffmpeg -i ${record_dir}/${record_name}.gif -vf "fps=15,scale=${width}:-1:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse" ${record_dir}/${record_name}_${width}w.gif
 ```
 
@@ -125,4 +135,16 @@ static_ffmpeg -framerate 15 -i frames/%07d.png -vf "scale=trunc(iw/2)*2:trunc(ih
 ### gif
 ```bash
 static_ffmpeg -framerate 15 -i frames/%07d.png -vf "fps=15,scale=1280:-1:flags=lanczos" ${record_dir}/${record_name}.gif
+```
+
+## 4-4. gif → mp4 with a fixed fps / width
+
+GIF frame delays are often irregular, so pin the output frame rate with `fps` instead of trusting the gif timing.
+`yuv420p` and even dimensions (`trunc(../2)*2`) are required for players such as PowerPoint and browsers.
+
+```bash
+fps=15
+width=1280
+static_ffmpeg -i ${record_dir}/${record_name}.gif -movflags faststart \
+  -vf "fps=${fps},scale=${width}:-2" -pix_fmt yuv420p ${record_dir}/${record_name}_from_gif.mp4
 ```
