@@ -11,8 +11,8 @@ def generate_launch_description():
     """
     Quest right-controller -> MoveIt Servo POSE teleop (relative clutch).
 
-    Assumes moveit.launch.py (move_group + servo_node + RViz) and a sim bridge
-    (sim_bridge.launch.py simulator:=gazebo) are already running, and that the
+    Assumes moveit.launch.py (move_group + servo_node + RViz) and the sim bridge
+    (sim_bridge.launch.py) are already running, and that the
     quest_pose_publisher node is streaming on the other DDS peer.
     """
     manipulator_model = os.environ.get("MANIPULATOR_MODEL", "dobot_cr3a")
