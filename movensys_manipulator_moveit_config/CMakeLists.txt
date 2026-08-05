@@ -90,6 +90,9 @@ install(DIRECTORY include/
   DESTINATION include
 )
 
+add_executable(sim_bridge src/sim_bridge.cpp)
+ament_target_dependencies(sim_bridge rclcpp rclcpp_action control_msgs trajectory_msgs sensor_msgs std_msgs std_srvs)
+
 add_executable(isaacsim_bridge src/isaacsim_bridge.cpp)
 ament_target_dependencies(isaacsim_bridge rclcpp rclcpp_action control_msgs trajectory_msgs sensor_msgs std_msgs std_srvs)
 
@@ -185,7 +188,7 @@ if(HAVE_SERVO_COMMAND_TYPE)
   )
 endif()
 
-install(TARGETS moveit2_client_lib isaacsim_bridge gazebo_bridge
+install(TARGETS moveit2_client_lib sim_bridge isaacsim_bridge gazebo_bridge
   EXPORT export_moveit2_client_lib
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib

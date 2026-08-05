@@ -12,7 +12,7 @@ quest_pose_node (teleop container)                 quest_servo_teleop (manipulat
                                                      ▼
                                     /servo_node/pose_target_cmds ──► moveit_servo::ServoNode
                                                                        ▼
-                                            gazebo_bridge → gz_ros2_control → robot
+                                              sim_bridge → gz_ros2_control → robot
 ```
 
 ## Prerequisites
@@ -44,7 +44,7 @@ ros2 launch movensys_manipulator_description gazebo_trajectory_simulation.launch
 **3 — MoveIt (move_group + servo_node + RViz) and the sim bridge.**
 ```bash
 ros2 launch movensys_manipulator_moveit_config moveit.launch.py use_sim_time:=true rsp:=false
-ros2 launch movensys_manipulator_moveit_config sim_bridge.launch.py simulator:=gazebo use_sim_time:=true
+ros2 launch movensys_manipulator_moveit_config sim_bridge.launch.py use_sim_time:=true
 ```
 
 **4 — Quest servo teleop.**
@@ -69,9 +69,10 @@ It switches Servo to POSE mode automatically (`/servo_node/switch_command_type`)
   (`scale.linear/rotational`, singularity thresholds, `check_collisions`).
 
 ## Notes
-- The `gazebo_bridge` does not publish `/moveit2_trajectory/execution_active`; the node
-  subscribes to it for forward-compat with the Isaac Sim bridge (which pauses
-  streaming and re-anchors around move_group plans) but does not require it.
+- `sim_bridge` publishes `/moveit2_trajectory/execution_active` (latched) on both the
+  Gazebo and Isaac Sim paths, so streaming pauses and POSE mode re-anchors around
+  move_group plans. The node only subscribes to it and does not require it, so the
+  older `gazebo_bridge`, which never published it, still works.
 - Clutch source is the analog grip (`joy_right` axes[3], `squeeze_value`,
   thresholded at 0.6). Switch to a digital button by setting
   `enable_button_index` ≥ 0 in the yaml.
