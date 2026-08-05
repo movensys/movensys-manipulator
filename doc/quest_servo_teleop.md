@@ -71,8 +71,7 @@ It switches Servo to POSE mode automatically (`/servo_node/switch_command_type`)
 ## Notes
 - `sim_bridge` publishes `/moveit2_trajectory/execution_active` (latched) on both the
   Gazebo and Isaac Sim paths, so streaming pauses and POSE mode re-anchors around
-  move_group plans. The node only subscribes to it and does not require it, so the
-  older `gazebo_bridge`, which never published it, still works.
+  move_group plans. The node only subscribes to it and does not require it.
 - Clutch source is the analog grip (`joy_right` axes[3], `squeeze_value`,
   thresholded at 0.6). Switch to a digital button by setting
   `enable_button_index` ≥ 0 in the yaml.
