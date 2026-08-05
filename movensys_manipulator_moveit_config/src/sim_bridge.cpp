@@ -1,3 +1,6 @@
+// Copyright 2026 Movensys Corporation.
+// Licensed under the MIT License. See LICENSE.txt for details.
+
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -219,7 +222,7 @@ void SimBridge::publishJointCommand(
 void SimBridge::cbServoCommand(const trajectory_msgs::msg::JointTrajectory::SharedPtr msg)
 {
   if (msg->points.empty() || in_execution_.load()) {
-    return; 
+    return;
   }
   const auto & pt = msg->points.back();
   publishJointCommand(pt.positions, pt.velocities);
@@ -275,7 +278,7 @@ void SimBridge::handle_accepted(const std::shared_ptr<GoalHandleFJT> goal_handle
 
 void SimBridge::execute(const std::shared_ptr<GoalHandleFJT> goal_handle)
 {
-  in_execution_ = true;   
+  in_execution_ = true;
   publishExecActive(true);
 
   ScopeExit on_exit{[this]() {
