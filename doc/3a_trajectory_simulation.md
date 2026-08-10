@@ -39,7 +39,7 @@ add `rsp:=false` if use gazebo (step 1b).
 
 
 
-### Step 4: Drive the end effector with the keyboard
+### Step 4 (optional): Drive the end effector with the keyboard
 ```
 mros ros2 run movensys_manipulator_moveit_config keyboard_teleop
 ```

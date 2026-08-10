@@ -69,7 +69,7 @@ It switches Servo to POSE mode automatically (`/servo_node/switch_command_type`)
   (`scale.linear/rotational`, singularity thresholds, `check_collisions`).
 
 ## Notes
-- The `gazebo_bridge` does not publish `/bridge/execution_active`; the node
+- The `gazebo_bridge` does not publish `/moveit2_trajectory/execution_active`; the node
   subscribes to it for forward-compat with the Isaac Sim bridge (which pauses
   streaming and re-anchors around move_group plans) but does not require it.
 - Clutch source is the analog grip (`joy_right` axes[3], `squeeze_value`,

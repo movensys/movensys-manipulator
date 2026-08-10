@@ -129,7 +129,7 @@ IsaacSimBridge::IsaacSimBridge() : Node("isaacsim_bridge")
 
     // Latched so a keyboard_teleop that starts after a trajectory still sees state.
     pub_exec_active_ = this->create_publisher<std_msgs::msg::Bool>(
-        "/bridge/execution_active", rclcpp::QoS(1).transient_local());
+        "/moveit2_trajectory/execution_active", rclcpp::QoS(1).transient_local());
     publishExecActive(false);
 
     RCLCPP_INFO(this->get_logger(), "isaacsim_bridge is ready");
