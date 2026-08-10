@@ -90,11 +90,9 @@ install(DIRECTORY include/
   DESTINATION include
 )
 
-add_executable(isaacsim_bridge src/isaacsim_bridge.cpp)
-ament_target_dependencies(isaacsim_bridge rclcpp rclcpp_action control_msgs trajectory_msgs sensor_msgs std_msgs std_srvs)
-
-add_executable(gazebo_bridge src/gazebo_bridge.cpp)
-ament_target_dependencies(gazebo_bridge rclcpp rclcpp_action control_msgs trajectory_msgs sensor_msgs std_srvs)
+# Drives both Isaac Sim and Gazebo from one node; sim_bridge.launch.py uses this.
+add_executable(sim_bridge src/sim_bridge.cpp)
+ament_target_dependencies(sim_bridge rclcpp rclcpp_action control_msgs trajectory_msgs sensor_msgs std_msgs std_srvs)
 
 if(HAVE_SERVO_COMMAND_TYPE)
   add_executable(keyboard_teleop src/keyboard_teleop.cpp)
@@ -185,7 +183,7 @@ if(HAVE_SERVO_COMMAND_TYPE)
   )
 endif()
 
-install(TARGETS moveit2_client_lib isaacsim_bridge gazebo_bridge
+install(TARGETS moveit2_client_lib sim_bridge
   EXPORT export_moveit2_client_lib
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib

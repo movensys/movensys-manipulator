@@ -27,8 +27,6 @@ jobs:
 
       - name: Setup ROS ${{ matrix.ros_distro }}
         uses: ros-tooling/setup-ros@v0.7
-        with:
-          required-ros-distributions: ${{ matrix.ros_distro }}
 
       - name: Setup workspace
         run: |
@@ -37,11 +35,15 @@ jobs:
 
       - name: rosdep install
         run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ros-${{ matrix.ros_distro }}-ros-base
           sudo rosdep init || true
           rosdep update
           cd ~/movensys_ws
           rosdep install --from-paths src --ignore-src -y \
-            --rosdistro ${{ matrix.ros_distro }}
+            --rosdistro ${{ matrix.ros_distro }} \
+            -t buildtool -t build -t buildtool_export -t build_export -t test
 
       - name: colcon build
         run: |
