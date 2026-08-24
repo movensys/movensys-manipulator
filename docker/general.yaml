@@ -1,3 +1,5 @@
+name: movensys_manipulator
+
 services:
   movensys_manipulator:
     restart: unless-stopped
@@ -7,8 +9,6 @@ services:
       network: host
       args:
         - ROS_DISTRO=${ROS_DISTRO}
-        - HOST_USER_UID=${HOST_USER_UID}
-        - HOST_USER_GID=${HOST_USER_GID}
     image: ${IMAGE_NAME}
     container_name: ${CONTAINER_NAME}
     privileged: true
@@ -20,9 +20,7 @@ services:
     tty: true
     environment:
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID}
-      - HOST_USER_UID=${HOST_USER_UID}
-      - HOST_USER_GID=${HOST_USER_GID}
-      - USER=${USER}
+      - USER=admin
       - RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION}
       - CYCLONEDDS_URI=file:///home/admin/workspaces/cyclonedds.xml
       - DISPLAY
@@ -38,7 +36,23 @@ services:
     devices:
       - /dev/dri
     command: ["/bin/bash","-lc",
-              "sudo chown -R admin:admin /home/admin/workspaces/movensys_ws && \
+              "SRC=/home/admin/workspaces/movensys_ws/src/movensys-manipulator && \
+               DDS=/home/admin/workspaces/cyclonedds.xml && \
+               HOST_UID=$$(stat -c %u $$SRC) && HOST_GID=$$(stat -c %g $$SRC) && \
+               if [ \"$$HOST_UID\" = 0 ]; then \
+                 echo \"WARN: $$SRC is root-owned, keeping admin $$(id -u admin):$$(id -g admin)\"; \
+                 HOST_UID=$$(id -u admin); HOST_GID=$$(id -g admin); fi && \
+               echo ====== Map admin to host $$HOST_UID:$$HOST_GID ======= && \
+               if [ \"$$HOST_GID\" != \"$$(id -g admin)\" ]; then \
+                 sudo groupmod -g $$HOST_GID admin \
+                   || echo \"NOTE: groupmod reported an error, continuing\"; fi && \
+               if [ \"$$HOST_UID\" != \"$$(id -u admin)\" ]; then \
+                 sudo usermod -u $$HOST_UID admin \
+                   || echo \"NOTE: usermod home chown skipped (read-only mounts)\"; fi && \
+               sudo find /home/admin -xdev \
+                 -path $$SRC -prune -o -path $$DDS -prune -o \
+                 ! -user admin -exec chown -h admin:admin {} + \
+                   || echo \"WARN: ownership fixup under /home/admin incomplete\" && \
                source /opt/ros/${ROS_DISTRO}/setup.bash && \
 
                echo ====== Build movensys_manipulator ======= && \
