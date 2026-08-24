@@ -14,7 +14,17 @@ services:
     ipc: host
     runtime: nvidia
     working_dir: /home/admin/workspaces/movensys_ws
-    entrypoint: ["/usr/local/bin/scripts/workspace-entrypoint.sh"]
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        SRC=/home/admin/workspaces/movensys_ws/src/movensys-manipulator
+        HOST_USER_UID=$$(stat -c %u $$SRC 2>/dev/null || echo 1000)
+        HOST_USER_GID=$$(stat -c %g $$SRC 2>/dev/null || echo 1000)
+        if [ "$$HOST_USER_UID" = 0 ]; then HOST_USER_UID=1000; HOST_USER_GID=1000; fi
+        export HOST_USER_UID HOST_USER_GID
+        exec /usr/local/bin/scripts/workspace-entrypoint.sh "$$@"
+      - --
     stdin_open: true
     tty: true
     environment:
