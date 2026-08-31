@@ -15,6 +15,7 @@
 // Output (to moveit_servo::ServoNode):
 //   /servo_node/pose_target_cmds       geometry_msgs/PoseStamped  target EEF pose
 //   /servo_node/switch_command_type    moveit_msgs/srv/ServoCommandType (POSE=2)
+//   ~/active_mode                      std_msgs/String            DOF mode (latched)
 //
 // Clutch model (deadman): motion only while the grip is held. On the press edge
 // we latch the controller pose (c0,qc0) and the current EEF pose (r0,qr0, from
@@ -23,6 +24,20 @@
 // release we stop streaming so Servo halts (incoming_command_timeout), and the
 // next press re-anchors -- so the operator can recenter their hand without moving
 // the robot (the "mouse-lift" clutch).
+//
+// DOF modes: the clutch delta is multiplied by a per-axis gain vector
+// [tx,ty,tz,rx,ry,rz] before it is applied to the anchor, so a gain of 0 pins
+// that axis to its anchored value ("translation only", "yaw only", ...) and
+// values in between damp it. Because the target is rebuilt from the anchor every
+// cycle, a pinned axis needs no extra state -- zeroing its delta *is* holding it.
+// Modes are named presets (see kModePresets), switchable at runtime through the
+// `motion_mode` parameter or a controller button. Every switch re-anchors:
+// without that, dropping an axis collapses its accumulated delta to zero in a
+// single cycle and steps the target discontinuously.
+//
+// Note that masking the *target* does not guarantee the arm holds the pinned
+// axis exactly -- Servo's IK, singularity damping and collision slowdown can all
+// leave residual motion there. This is a teleop mapping, not a hard constraint.
 
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/LinearMath/Vector3.h>
@@ -30,24 +45,73 @@
 #include <tf2_ros/transform_listener.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <moveit_msgs/srv/servo_command_type.hpp>
+#include <rcl_interfaces/msg/set_parameters_result.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/joy.hpp>
 #include <std_msgs/msg/bool.hpp>
+#include <std_msgs/msg/string.hpp>
 
 using namespace std::chrono_literals;
 
 namespace {
 // moveit_msgs/srv/ServoCommandType: 0=JOINT_JOG, 1=TWIST, 2=POSE.
 constexpr int8_t CMD_POSE = 2;
+
+// Per-axis gains on the clutch delta: [tx, ty, tz, rx, ry, rz]. 0 pins the axis
+// to its anchored value, 1 follows the hand 1:1. Rotation axis names below are
+// those of the *mask frame* (mask_frame=base: rz=yaw, ry=pitch, rx=roll about
+// the robot base; mask_frame=tool: the same about the anchored tool axes).
+using DofGain = std::array<double, 6>;
+
+struct ModePreset {
+    const char* name;
+    DofGain gain;
+};
+
+constexpr ModePreset kModePresets[] = {
+    {"full",        {{1, 1, 1, 1, 1, 1}}},
+    {"translation", {{1, 1, 1, 0, 0, 0}}},
+    {"rotation",    {{0, 0, 0, 1, 1, 1}}},
+    {"planar",      {{1, 1, 0, 0, 0, 1}}},  // tabletop: XY + yaw
+    {"vertical",    {{0, 0, 1, 0, 0, 0}}},
+    {"yaw",         {{0, 0, 0, 0, 0, 1}}},
+    {"pitch",       {{0, 0, 0, 0, 1, 0}}},
+    {"roll",        {{0, 0, 0, 1, 0, 0}}},
+};
+
+// Gains come from the custom_dof_gain parameter instead of the table.
+constexpr const char* kCustomMode = "custom";
+
+bool lookupPreset(const std::string& name, DofGain& out) {
+    for (const auto& preset : kModePresets) {
+        if (name == preset.name) {
+            out = preset.gain;
+            return true;
+        }
+    }
+    return false;
+}
+
+// "full, translation, ..., custom" -- for parameter-rejection messages.
+std::string modeNameList() {
+    std::string s;
+    for (const auto& preset : kModePresets) {
+        s += preset.name;
+        s += ", ";
+    }
+    return s + kCustomMode;
+}
 }  // namespace
 
 class QuestServoTeleop {
@@ -77,6 +141,22 @@ public:
         max_target_step_   = declare<double>("max_target_step", 0.05);     // m per publish
         double stream_hz   = declare<double>("stream_rate_hz", 50.0);
 
+        // DOF masking.
+        const std::string mode = declare<std::string>("motion_mode", "full");
+        custom_dof_gain_ = declare<std::vector<double>>("custom_dof_gain",
+                                                        {1.0, 1.0, 1.0, 1.0, 1.0, 1.0});
+        const std::string mask_frame = declare<std::string>("mask_frame", "base");
+        mask_frame_tool_ = (mask_frame == "tool");
+        if (!mask_frame_tool_ && mask_frame != "base") {
+            RCLCPP_WARN(node_->get_logger(),
+                        "mask_frame '%s' is not 'base' or 'tool'; using base.",
+                        mask_frame.c_str());
+        }
+        mode_cycle_button_ = declare<int>("mode_cycle_button", -1);        // -1 = disabled
+        mode_cycle_list_   = declare<std::vector<std::string>>(
+            "mode_cycle_list", {"full", "translation", "planar", "yaw"});
+        validateCycleList();
+
         // Operator->robot frame alignment (yaw about base +Z).
         r_align_.setRPY(0.0, 0.0, align_yaw_deg_ * M_PI / 180.0);
         r_align_.normalize();
@@ -84,6 +164,9 @@ public:
         // --- ROS entities -------------------------------------------------
         target_pub_ = node_->create_publisher<geometry_msgs::msg::PoseStamped>(
             pose_target_topic_, 10);
+        // Latched so a UI joining late still learns the active mode.
+        mode_pub_ = node_->create_publisher<std_msgs::msg::String>(
+            "~/active_mode", rclcpp::QoS(1).transient_local());
         switch_client_ = node_->create_client<moveit_msgs::srv::ServoCommandType>(switch_service_);
 
         pose_sub_ = node_->create_subscription<geometry_msgs::msg::PoseStamped>(
@@ -102,6 +185,10 @@ public:
         tf_buffer_   = std::make_shared<tf2_ros::Buffer>(node_->get_clock());
         tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
+        // After the TF buffer exists: applyMode re-anchors through it whenever
+        // the clutch is engaged.
+        applyMode(mode);
+
         const auto period = std::chrono::duration<double>(1.0 / std::max(1.0, stream_hz));
         stream_timer_ = node_->create_wall_timer(
             std::chrono::duration_cast<std::chrono::nanoseconds>(period),
@@ -110,6 +197,9 @@ public:
         // Put Servo into POSE mode (retry until the service is up).
         switch_timer_ = node_->create_wall_timer(
             1s, std::bind(&QuestServoTeleop::ensurePoseMode, this));
+
+        param_cb_ = node_->add_on_set_parameters_callback(
+            std::bind(&QuestServoTeleop::onSetParams, this, std::placeholders::_1));
 
         RCLCPP_INFO(node_->get_logger(),
                     "quest_servo_teleop: pose<-%s enable<-%s target->%s | base=%s eef=%s "
@@ -146,6 +236,158 @@ private:
             });
     }
 
+    // --- DOF mode management ---------------------------------------------
+    DofGain customGain() const {
+        DofGain g{{1.0, 1.0, 1.0, 1.0, 1.0, 1.0}};
+        if (custom_dof_gain_.size() == 6) {
+            std::copy(custom_dof_gain_.begin(), custom_dof_gain_.end(), g.begin());
+        } else {
+            RCLCPP_WARN(node_->get_logger(),
+                        "custom_dof_gain has %zu entries (expected 6); using all-ones.",
+                        custom_dof_gain_.size());
+        }
+        return g;
+    }
+
+    void validateCycleList() {
+        DofGain unused;
+        for (const auto& name : mode_cycle_list_) {
+            if (name != kCustomMode && !lookupPreset(name, unused)) {
+                RCLCPP_WARN(node_->get_logger(),
+                            "mode_cycle_list entry '%s' is not a known mode; cycling to it will fail.",
+                            name.c_str());
+            }
+        }
+    }
+
+    // Swap the active gain vector. Re-anchors in the same critical section, so
+    // the operator's accumulated delta on a newly-pinned axis is discarded
+    // against a fresh anchor instead of stepping the target.
+    void applyMode(const std::string& name) {
+        DofGain gain{};
+        if (name == kCustomMode) {
+            gain = customGain();
+        } else if (!lookupPreset(name, gain)) {
+            RCLCPP_WARN(node_->get_logger(), "Unknown motion_mode '%s'; keeping '%s'.",
+                        name.c_str(), motion_mode_.c_str());
+            return;
+        }
+
+        // The TF lookup can block, so keep it outside the lock.
+        tf2::Vector3 r0;
+        tf2::Quaternion qr0;
+        bool relatch = false;
+        if (engaged_.load()) {
+            relatch = lookupEef(r0, qr0);
+            if (!relatch) {
+                // Changing the mask without re-anchoring would jump the target;
+                // drop the clutch instead. The next joy message re-engages.
+                engaged_.store(false);
+                RCLCPP_WARN(node_->get_logger(),
+                            "Mode change could not re-anchor (no %s->%s TF); clutch dropped.",
+                            base_frame_.c_str(), eef_frame_.c_str());
+            }
+        }
+        {
+            std::lock_guard<std::mutex> lock(mtx_);
+            gain_ = gain;
+            if (relatch) {
+                latchLocked(r0, qr0);
+            }
+        }
+
+        motion_mode_ = name;
+        std_msgs::msg::String msg;
+        msg.data = name;
+        mode_pub_->publish(msg);
+        RCLCPP_INFO(node_->get_logger(),
+                    "Motion mode '%s' [t %.2f %.2f %.2f | r %.2f %.2f %.2f] in %s frame.",
+                    name.c_str(), gain[0], gain[1], gain[2], gain[3], gain[4], gain[5],
+                    mask_frame_tool_ ? "tool" : "base");
+    }
+
+    void cycleMode() {
+        const size_t n = mode_cycle_list_.size();
+        if (n == 0) {
+            return;
+        }
+        size_t next = 0;  // current mode not in the list -> start at the front
+        for (size_t i = 0; i < n; ++i) {
+            if (mode_cycle_list_[i] == motion_mode_) {
+                next = (i + 1) % n;
+                break;
+            }
+        }
+        // Route through the parameter so `ros2 param get motion_mode` stays
+        // truthful and external listeners see the change.
+        const auto result = node_->set_parameter(rclcpp::Parameter("motion_mode",
+                                                                   mode_cycle_list_[next]));
+        if (!result.successful) {
+            RCLCPP_WARN(node_->get_logger(), "Mode cycle to '%s' rejected: %s",
+                        mode_cycle_list_[next].c_str(), result.reason.c_str());
+        }
+    }
+
+    // rclcpp hands the whole `ros2 param set` batch to one callback, so validate
+    // every parameter in it before touching any state: a batch that fails here is
+    // rejected wholesale, and must not leave half its side effects behind.
+    rcl_interfaces::msg::SetParametersResult onSetParams(
+        const std::vector<rclcpp::Parameter>& params) {
+        rcl_interfaces::msg::SetParametersResult result;
+        result.successful = true;
+        for (const auto& p : params) {
+            if (p.get_name() == "motion_mode") {
+                DofGain unused;
+                const std::string v = p.as_string();
+                if (v != kCustomMode && !lookupPreset(v, unused)) {
+                    result.successful = false;
+                    result.reason = "unknown motion_mode '" + v + "'; expected one of: "
+                                    + modeNameList();
+                }
+            } else if (p.get_name() == "custom_dof_gain") {
+                const auto v = p.as_double_array();
+                if (v.size() != 6) {
+                    result.successful = false;
+                    result.reason = "custom_dof_gain needs 6 entries [tx,ty,tz,rx,ry,rz]";
+                } else if (std::any_of(v.begin(), v.end(), [](double d) { return d < 0.0; })) {
+                    result.successful = false;
+                    result.reason = "custom_dof_gain entries must be >= 0";
+                }
+            }
+        }
+        if (!result.successful) {
+            return result;
+        }
+
+        // Everything validated: commit the plain values first, so that a batch
+        // setting both custom_dof_gain and motion_mode=custom picks up the new
+        // gains when applyMode runs below.
+        bool gains_changed = false;
+        for (const auto& p : params) {
+            if (p.get_name() == "custom_dof_gain") {
+                custom_dof_gain_ = p.as_double_array();
+                gains_changed = true;
+            } else if (p.get_name() == "mode_cycle_list") {
+                mode_cycle_list_ = p.as_string_array();
+                validateCycleList();
+            } else if (p.get_name() == "mode_cycle_button") {
+                mode_cycle_button_ = static_cast<int>(p.as_int());
+            }
+        }
+
+        // applyMode re-anchors and publishes, so run it at most once per batch.
+        for (const auto& p : params) {
+            if (p.get_name() == "motion_mode") {
+                applyMode(p.as_string());
+                return result;
+            }
+        }
+        if (gains_changed && motion_mode_ == kCustomMode) {
+            applyMode(kCustomMode);  // gains edited while already in custom mode
+        }
+        return result;
+    }
+
     // --- subscriptions ----------------------------------------------------
     void onQuestPose(geometry_msgs::msg::PoseStamped::SharedPtr msg) {
         std::lock_guard<std::mutex> lock(mtx_);
@@ -161,13 +403,25 @@ private:
             if (static_cast<size_t>(enable_button_index_) < msg->buttons.size()) {
                 pressed = msg->buttons[enable_button_index_] != 0;
             }
-        } else if (static_cast<size_t>(enable_axis_index_) < msg->axes.size()) {
+        } else if (enable_axis_index_ >= 0 &&
+                   static_cast<size_t>(enable_axis_index_) < msg->axes.size()) {
             pressed = msg->axes[enable_axis_index_] >= enable_axis_threshold_;
         }
         if (pressed && !engaged_.load()) {
             engage();
         } else if (!pressed && engaged_.load()) {
             disengage();
+        }
+
+        // Mode cycling on the rising edge. Disabled by default so the face
+        // buttons stay free for the gripper.
+        if (mode_cycle_button_ >= 0 &&
+            static_cast<size_t>(mode_cycle_button_) < msg->buttons.size()) {
+            const bool now = msg->buttons[mode_cycle_button_] != 0;
+            if (now && !cycle_prev_) {
+                cycleMode();
+            }
+            cycle_prev_ = now;
         }
     }
 
@@ -180,6 +434,17 @@ private:
     }
 
     // --- clutch state machine --------------------------------------------
+    // Latch the clutch anchors to `r0`/`qr0` and the latest controller pose, and
+    // reset the streamed target there. Caller holds mtx_.
+    void latchLocked(const tf2::Vector3& r0, const tf2::Quaternion& qr0) {
+        c0_ = c_now_;
+        qc0_ = qc_now_;
+        r0_ = r0;
+        qr0_ = qr0;
+        target_p_ = r0;  // first command holds the current pose
+        target_q_ = qr0;
+    }
+
     void engage() {
         tf2::Vector3 r0;
         tf2::Quaternion qr0;
@@ -193,15 +458,11 @@ private:
             RCLCPP_WARN(node_->get_logger(), "Clutch engage aborted: no controller pose yet.");
             return;
         }
-        c0_ = c_now_;
-        qc0_ = qc_now_;
-        r0_ = r0;
-        qr0_ = qr0;
-        target_p_ = r0;      // first command holds the current pose
-        target_q_ = qr0;
+        latchLocked(r0, qr0);
         engaged_.store(true);
-        RCLCPP_INFO(node_->get_logger(), "Clutch ENGAGED (anchor EEF [%.3f, %.3f, %.3f]).",
-                    r0.x(), r0.y(), r0.z());
+        RCLCPP_INFO(node_->get_logger(),
+                    "Clutch ENGAGED (anchor EEF [%.3f, %.3f, %.3f], mode '%s').",
+                    r0.x(), r0.y(), r0.z(), motion_mode_.c_str());
     }
 
     void disengage() {
@@ -218,12 +479,7 @@ private:
             return;
         }
         std::lock_guard<std::mutex> lock(mtx_);
-        c0_ = c_now_;
-        qc0_ = qc_now_;
-        r0_ = r0;
-        qr0_ = qr0;
-        target_p_ = r0;
-        target_q_ = qr0;
+        latchLocked(r0, qr0);
     }
 
     bool lookupEef(tf2::Vector3& p, tf2::Quaternion& q) {
@@ -242,6 +498,48 @@ private:
         return false;
     }
 
+    // --- DOF masking ------------------------------------------------------
+    // Both helpers take a clutch delta already expressed in the robot base frame
+    // and return it with the per-axis gains applied. `q_mask` rotates mask-frame
+    // vectors into the base frame: identity for mask_frame=base, the *anchored*
+    // EEF orientation for mask_frame=tool (a live tool orientation would rotate
+    // the constraint surface out from under the operator). Caller holds mtx_.
+
+    tf2::Vector3 maskTranslation(const tf2::Vector3& d, const tf2::Quaternion& q_mask) const {
+        tf2::Vector3 v = tf2::quatRotate(q_mask.inverse(), d);
+        v.setValue(v.x() * gain_[0], v.y() * gain_[1], v.z() * gain_[2]);
+        return tf2::quatRotate(q_mask, v);
+    }
+
+    // Per-axis gains cannot be applied to a quaternion directly, so drop into the
+    // rotation-vector (log map) representation, scale there, and exponentiate
+    // back. This is continuous everywhere, unlike an Euler decomposition, which
+    // would be order-dependent and gimbal-lock at pitch +-90deg. For a uniform
+    // gain it is exactly slerp from identity, which is how orientation_scale_ is
+    // folded in here.
+    tf2::Quaternion maskRotation(tf2::Quaternion dq, const tf2::Quaternion& q_mask) const {
+        if (dq.w() < 0.0) {
+            // Shortest path: tf2's getAngle() spans [0, 2pi], so a negative-w
+            // delta would otherwise be masked as the long way round.
+            dq = tf2::Quaternion(-dq.x(), -dq.y(), -dq.z(), -dq.w());
+        }
+        const tf2::Quaternion dl = q_mask.inverse() * dq * q_mask;
+        const double angle = dl.getAngle();
+        if (angle < 1e-9) {
+            return tf2::Quaternion::getIdentity();  // getAxis() is arbitrary here
+        }
+        tf2::Vector3 v = dl.getAxis() * angle;
+        v.setValue(v.x() * gain_[3] * orientation_scale_,
+                   v.y() * gain_[4] * orientation_scale_,
+                   v.z() * gain_[5] * orientation_scale_);
+        const double masked_angle = v.length();
+        if (masked_angle < 1e-9) {
+            return tf2::Quaternion::getIdentity();
+        }
+        const tf2::Quaternion masked(v / masked_angle, masked_angle);
+        return q_mask * masked * q_mask.inverse();
+    }
+
     // --- streaming --------------------------------------------------------
     void streamTarget() {
         if (!engaged_.load() || exec_active_.load()) {
@@ -253,10 +551,16 @@ private:
             if (!have_pose_) {
                 return;
             }
-            // Position: scaled controller delta, rotated into the base frame.
-            tf2::Vector3 dp_quest = c_now_ - c0_;
-            tf2::Vector3 dp_robot = tf2::quatRotate(r_align_, dp_quest) * position_scale_;
-            tf2::Vector3 desired = r0_ + dp_robot;
+            const tf2::Quaternion q_mask =
+                mask_frame_tool_ ? qr0_ : tf2::Quaternion::getIdentity();
+
+            // Position: scaled controller delta, rotated into the base frame,
+            // then masked per axis. A gain of 0 leaves that component of
+            // `desired` equal to the anchor, which is what pins it.
+            const tf2::Vector3 dp_quest = c_now_ - c0_;
+            const tf2::Vector3 dp_robot =
+                maskTranslation(tf2::quatRotate(r_align_, dp_quest), q_mask) * position_scale_;
+            const tf2::Vector3 desired = r0_ + dp_robot;
 
             // Clamp per-cycle target slew (rejects controller glitches/dropouts).
             tf2::Vector3 step = desired - target_p_;
@@ -267,15 +571,12 @@ private:
             target_p_ = target_p_ + step;
 
             // Orientation: controller rotation since anchor, expressed in the base
-            // frame, optionally damped, then applied to the anchored EEF orientation.
+            // frame, masked and damped per axis, then applied to the anchored EEF
+            // orientation.
             tf2::Quaternion dq_quest = qc_now_ * qc0_.inverse();
             tf2::Quaternion dq_robot = r_align_ * dq_quest * r_align_.inverse();
             dq_robot.normalize();
-            if (orientation_scale_ < 0.999) {
-                dq_robot = tf2::Quaternion::getIdentity().slerp(dq_robot, orientation_scale_);
-                dq_robot.normalize();
-            }
-            target_q_ = (dq_robot * qr0_);
+            target_q_ = maskRotation(dq_robot, q_mask) * qr0_;
             target_q_.normalize();
 
             out.pose.position.x = target_p_.x();
@@ -300,13 +601,23 @@ private:
     double enable_axis_threshold_;
     double position_scale_, orientation_scale_, align_yaw_deg_, max_target_step_;
 
+    // DOF masking. Only touched from executor callbacks, except gain_.
+    std::string motion_mode_{"full"};
+    std::vector<double> custom_dof_gain_;
+    std::vector<std::string> mode_cycle_list_;
+    bool mask_frame_tool_{false};
+    int mode_cycle_button_{-1};
+    bool cycle_prev_{false};
+
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr target_pub_;
+    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr mode_pub_;
     rclcpp::Client<moveit_msgs::srv::ServoCommandType>::SharedPtr switch_client_;
     rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr pose_sub_;
     rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr joy_sub_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr exec_sub_;
     rclcpp::TimerBase::SharedPtr stream_timer_;
     rclcpp::TimerBase::SharedPtr switch_timer_;
+    rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_cb_;
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
@@ -318,6 +629,7 @@ private:
 
     std::mutex mtx_;                     // guards the fields below
     bool have_pose_{false};
+    DofGain gain_{{1.0, 1.0, 1.0, 1.0, 1.0, 1.0}};
     tf2::Vector3 c_now_{0, 0, 0}, c0_{0, 0, 0}, r0_{0, 0, 0}, target_p_{0, 0, 0};
     tf2::Quaternion qc_now_{0, 0, 0, 1}, qc0_{0, 0, 0, 1}, qr0_{0, 0, 0, 1},
         target_q_{0, 0, 0, 1};

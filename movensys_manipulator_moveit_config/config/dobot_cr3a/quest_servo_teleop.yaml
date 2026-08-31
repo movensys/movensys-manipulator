@@ -25,3 +25,38 @@ quest_servo_teleop:
     align_yaw_deg: 0.0             # rotate operator "forward" onto robot +X (calibrate)
     max_target_step: 0.05          # max target jump per publish [m] (glitch guard)
     stream_rate_hz: 50.0
+
+    # --- DOF modes -------------------------------------------------------
+    # The clutch delta is multiplied by a per-axis gain [tx,ty,tz,rx,ry,rz]
+    # before it is applied to the anchor: 0 pins that axis at its anchored
+    # value, 1 follows the hand 1:1, values between damp it. Presets:
+    #   full         1 1 1 | 1 1 1   6-DOF (default)
+    #   translation  1 1 1 | 0 0 0   position only, orientation held
+    #   rotation     0 0 0 | 1 1 1   orientation only, position held
+    #   planar       1 1 0 | 0 0 1   tabletop: XY + yaw
+    #   vertical     0 0 1 | 0 0 0   straight up/down
+    #   yaw          0 0 0 | 0 0 1   spin about the mask-frame Z only
+    #   pitch        0 0 0 | 0 1 0
+    #   roll         0 0 0 | 1 0 0
+    #   custom       from custom_dof_gain below
+    # Switch at runtime with:
+    #   ros2 param set /quest_servo_teleop motion_mode translation
+    # Every switch re-anchors the clutch, so the arm does not jump.
+    motion_mode: full
+
+    # Axes the mask is expressed in:
+    #   base - the robot base frame (rz = yaw, ry = pitch, rx = roll about it)
+    #   tool - the EEF axes *as anchored at clutch engage*, for approach-axis
+    #          work like insertion. Not the live tool frame: that would rotate
+    #          the constraint surface out from under the operator.
+    mask_frame: base
+
+    # Used only when motion_mode is "custom". Entries must be >= 0.
+    custom_dof_gain: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+
+    # --- in-headset mode switching ---------------------------------------
+    # Index into Joy.buttons = [primary, secondary, thumbstick, menu];
+    # -1 disables it, which is the default so the face buttons stay free for
+    # the gripper. A rising edge steps through mode_cycle_list.
+    mode_cycle_button: -1
+    mode_cycle_list: ["full", "translation", "planar", "yaw"]
