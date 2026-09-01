@@ -51,7 +51,6 @@
 #include <memory>
 #include <mutex>
 #include <string>
-#include <thread>
 #include <vector>
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
@@ -189,10 +188,18 @@ public:
         // the clutch is engaged.
         applyMode(mode);
 
+        // The pose stream gets its own callback group so that a slow callback
+        // elsewhere -- a TF miss, a parameter batch, a service reply -- can never
+        // delay a command past Servo's incoming_command_timeout. Every other
+        // callback stays in the node's default group and so remains serialised
+        // against itself; only gain_ and the latch state cross the two groups,
+        // and those are already under mtx_.
+        stream_cb_group_ = node_->create_callback_group(
+            rclcpp::CallbackGroupType::MutuallyExclusive);
         const auto period = std::chrono::duration<double>(1.0 / std::max(1.0, stream_hz));
         stream_timer_ = node_->create_wall_timer(
             std::chrono::duration_cast<std::chrono::nanoseconds>(period),
-            std::bind(&QuestServoTeleop::streamTarget, this));
+            std::bind(&QuestServoTeleop::streamTarget, this), stream_cb_group_);
 
         // Put Servo into POSE mode (retry until the service is up).
         switch_timer_ = node_->create_wall_timer(
@@ -449,13 +456,16 @@ private:
         tf2::Vector3 r0;
         tf2::Quaternion qr0;
         if (!lookupEef(r0, qr0)) {
-            RCLCPP_WARN(node_->get_logger(), "Clutch engage aborted: no %s->%s TF yet.",
-                        base_frame_.c_str(), eef_frame_.c_str());
+            // Throttled: engaged_ stays false, so the next joy message retries.
+            RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
+                                 "Clutch engage aborted: no %s->%s TF yet.",
+                                 base_frame_.c_str(), eef_frame_.c_str());
             return;
         }
         std::lock_guard<std::mutex> lock(mtx_);
         if (!have_pose_) {
-            RCLCPP_WARN(node_->get_logger(), "Clutch engage aborted: no controller pose yet.");
+            RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
+                                 "Clutch engage aborted: no controller pose yet.");
             return;
         }
         latchLocked(r0, qr0);
@@ -476,26 +486,40 @@ private:
         tf2::Vector3 r0;
         tf2::Quaternion qr0;
         if (!lookupEef(r0, qr0)) {
+            // Unlike engage(), nothing re-drives this edge, and streaming against
+            // the pre-trajectory anchor would snap the arm back to where it was
+            // before the plan ran. Drop the clutch; the next joy message re-engages.
+            engaged_.store(false);
+            RCLCPP_WARN(node_->get_logger(),
+                        "Post-trajectory re-anchor failed; clutch dropped.");
             return;
         }
         std::lock_guard<std::mutex> lock(mtx_);
         latchLocked(r0, qr0);
     }
 
+    // Latest base->EEF transform, and the only place this node reads robot state.
+    // Deliberately non-blocking: every caller runs on an executor thread, and the
+    // old 20x50ms retry loop slept there, stalling the pose stream well past
+    // Servo's incoming_command_timeout (0.1 s) and tripping a halt/resume jerk.
+    // A miss is safe at all three call sites -- engage() is re-driven by the next
+    // joy message, reanchor() and applyMode() drop the clutch rather than stream
+    // against a stale anchor.
     bool lookupEef(tf2::Vector3& p, tf2::Quaternion& q) {
-        for (int i = 0; i < 20 && rclcpp::ok(); ++i) {
-            try {
-                auto tf = tf_buffer_->lookupTransform(base_frame_, eef_frame_, tf2::TimePointZero);
-                p.setValue(tf.transform.translation.x, tf.transform.translation.y,
-                           tf.transform.translation.z);
-                q.setValue(tf.transform.rotation.x, tf.transform.rotation.y,
-                           tf.transform.rotation.z, tf.transform.rotation.w);
-                return true;
-            } catch (const tf2::TransformException&) {
-                std::this_thread::sleep_for(50ms);
-            }
+        try {
+            const auto tf = tf_buffer_->lookupTransform(base_frame_, eef_frame_,
+                                                        tf2::TimePointZero);
+            p.setValue(tf.transform.translation.x, tf.transform.translation.y,
+                       tf.transform.translation.z);
+            q.setValue(tf.transform.rotation.x, tf.transform.rotation.y,
+                       tf.transform.rotation.z, tf.transform.rotation.w);
+            return true;
+        } catch (const tf2::TransformException& ex) {
+            RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
+                                 "TF %s->%s unavailable: %s", base_frame_.c_str(),
+                                 eef_frame_.c_str(), ex.what());
+            return false;
         }
-        return false;
     }
 
     // --- DOF masking ------------------------------------------------------
@@ -615,6 +639,7 @@ private:
     rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr pose_sub_;
     rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr joy_sub_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr exec_sub_;
+    rclcpp::CallbackGroup::SharedPtr stream_cb_group_;
     rclcpp::TimerBase::SharedPtr stream_timer_;
     rclcpp::TimerBase::SharedPtr switch_timer_;
     rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_cb_;
@@ -639,7 +664,11 @@ int main(int argc, char** argv) {
     rclcpp::init(argc, argv);
     auto node = rclcpp::Node::make_shared("quest_servo_teleop");
     QuestServoTeleop teleop(node);
-    rclcpp::spin(node);
+    // Two threads: one runs the pose stream timer's callback group, the other
+    // everything else. More would only contend on mtx_.
+    rclcpp::executors::MultiThreadedExecutor executor(rclcpp::ExecutorOptions(), 2);
+    executor.add_node(node);
+    executor.spin();
     rclcpp::shutdown();
     return 0;
 }

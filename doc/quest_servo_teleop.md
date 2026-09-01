@@ -114,7 +114,13 @@ a 40° yaw masks to 39.1° of yaw, not 40°.
 ## Notes
 - `sim_bridge` publishes `/moveit2_trajectory/execution_active` (latched) on both the
   Gazebo and Isaac Sim paths, so streaming pauses and POSE mode re-anchors around
-  move_group plans. The node only subscribes to it and does not require it.
+  move_group plans. The node only subscribes to it and does not require it. If that
+  post-trajectory re-anchor cannot read TF the clutch is dropped rather than left on
+  the stale anchor, which would snap the arm back to its pre-plan pose.
+- All TF reads are non-blocking. They run on executor threads, so a retry loop there
+  would stall the pose stream past Servo's `incoming_command_timeout` and trip a
+  halt/resume jerk. The stream timer also runs in its own callback group under a
+  multi-threaded executor, so no other callback can delay a command.
 - Masking the *target* does not guarantee the arm holds a pinned axis exactly:
   Servo's IK, singularity damping and collision slowdown can leave residual
   motion there. This is a teleop mapping, not a hard constraint.
