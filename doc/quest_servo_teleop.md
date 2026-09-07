@@ -102,8 +102,36 @@ its rotation vector, not the corresponding Euler factor — a 30° roll followed
 a 40° yaw masks to 39.1° of yaw, not 40°.
 
 ## Tuning (`config/dobot_cr3a/quest_servo_teleop.yaml`)
-- `align_yaw_deg` — rotate operator "forward" onto robot **+X**. Set this first:
-  engage, push your hand forward, and adjust until the EEF moves along +X.
+- `quest_axis_map` / `align_rpy_deg` — the operator→robot frame. Set these
+  first: engage, push your hand forward, and adjust until the EEF moves along
+  **+X**; then twist your wrist and check the tool turns the same way.
+
+  Both are applied as **one rotation**, to the position delta *and* the
+  orientation delta, which is what keeps translation and rotation consistent.
+  `quest_axis_map` is a signed permutation `"<x-src>,<y-src>,<z-src>"` and must
+  be a proper rotation — `"y,-x,z"` and `"-y,x,z"` are the two 90° yaw swaps;
+  a plain `"y,x,z"` mirrors the frame (det = −1) and is rejected, because a
+  mirror cannot be applied to an orientation. `align_rpy_deg` is `[roll, pitch,
+  yaw]` in degrees about the base axes, applied after the map.
+
+  Both are runtime-settable and re-anchor the clutch on change, so you can
+  calibrate live (note the `--`: a value starting with `-` otherwise looks like
+  a flag to the CLI):
+  ```bash
+  ros2 param set /quest_servo_teleop quest_axis_map -- "y,-x,z"
+  ros2 param set /quest_servo_teleop align_rpy_deg "[0.0, 0.0, 90.0]"
+  ```
+- `rotation_axis_map` / `rotation_rpy_deg` — the same two forms, applied to the
+  **orientation delta only**, on top of the pair above. Identity by default, and
+  that is the case you want: one frame for both deltas is the self-consistent
+  one. Reach for these only when translation is already right and the wrist axes
+  alone are wrong — hand roll turning the tool in yaw, say. A rotation about hand
+  axis `a` then comes out about robot axis `quest_axis_map · (rotation_axis_map ·
+  a)`, so to swap which hand axis drives which robot rotation, permute here:
+  ```bash
+  ros2 param set /quest_servo_teleop rotation_axis_map "z,-y,x"   # exchange roll and yaw
+  ros2 param set /quest_servo_teleop rotation_rpy_deg "[0.0, 0.0, -90.0]"
+  ```
 - `position_scale` — hand-to-EEF gain. Raise once direction is correct.
 - `orientation_scale` — `1.0` = 1:1 wrist rotation; lower to damp it.
 - `motion_mode` / `mask_frame` / `custom_dof_gain` — see **Constrained motion**.

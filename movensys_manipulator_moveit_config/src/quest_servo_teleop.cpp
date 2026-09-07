@@ -25,6 +25,17 @@
 // next press re-anchors -- so the operator can recenter their hand without moving
 // the robot (the "mouse-lift" clutch).
 //
+// Operator->robot frame: `quest_axis_map` (a signed axis permutation, det must
+// be +1) composed with `align_rpy_deg` forms one rotation, applied to the
+// position delta *and* the orientation delta. Both are runtime-settable and
+// re-anchor on change, so the mapping can be calibrated live with `ros2 param
+// set`. Keeping it a single proper rotation is what stops the two from
+// disagreeing: a mirrored axis map (e.g. plain x<->y) has no quaternion, so it
+// can only ever be applied to position, leaving hand rotations wrong.
+// `rotation_axis_map`/`rotation_rpy_deg` add an extra rotation on the
+// orientation delta alone, for the rig where the operator's rotation axes truly
+// do not follow their translation axes; identity by default.
+//
 // DOF modes: the clutch delta is multiplied by a per-axis gain vector
 // [tx,ty,tz,rx,ry,rz] before it is applied to the anchor, so a gain of 0 pins
 // that axis to its anchored value ("translation only", "yaw only", ...) and
@@ -39,6 +50,7 @@
 // axis exactly -- Servo's IK, singularity damping and collision slowdown can all
 // leave residual motion there. This is a teleop mapping, not a hard constraint.
 
+#include <tf2/LinearMath/Matrix3x3.h>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/LinearMath/Vector3.h>
 #include <tf2_ros/buffer.h>
@@ -102,6 +114,64 @@ bool lookupPreset(const std::string& name, DofGain& out) {
     return false;
 }
 
+// Signed axis permutation, e.g. "y,x,z" or "+y,-x,z": out[i] = sign * in[axis].
+// Only proper rotations (det = +1) are accepted. A mirrored map has no
+// equivalent quaternion, so it can be applied to the controller's position but
+// never consistently to its orientation -- which is exactly what the old
+// hard-coded x/y position swap did, and why hand rotations came out wrong.
+bool parseAxisMap(const std::string& spec, tf2::Matrix3x3& out, std::string& err) {
+    std::vector<std::string> tokens;
+    std::string cur;
+    for (const char ch : spec) {
+        if (ch == ',' || ch == ' ' || ch == '\t') {
+            if (!cur.empty()) {
+                tokens.push_back(cur);
+                cur.clear();
+            }
+        } else {
+            cur += ch;
+        }
+    }
+    if (!cur.empty()) {
+        tokens.push_back(cur);
+    }
+    if (tokens.size() != 3) {
+        err = "expected 3 axes, e.g. \"y,-x,z\"";
+        return false;
+    }
+
+    double m[3][3] = {{0.0}};
+    for (size_t i = 0; i < 3; ++i) {
+        std::string t = tokens[i];
+        double sign = 1.0;
+        if (t[0] == '+') {
+            t.erase(0, 1);
+        } else if (t[0] == '-') {
+            sign = -1.0;
+            t.erase(0, 1);
+        }
+        if (t.size() != 1 || t[0] < 'x' || t[0] > 'z') {
+            err = "'" + tokens[i] + "' is not [+-]x|y|z";
+            return false;
+        }
+        m[i][t[0] - 'x'] = sign;
+    }
+    out.setValue(m[0][0], m[0][1], m[0][2],
+                 m[1][0], m[1][1], m[1][2],
+                 m[2][0], m[2][1], m[2][2]);
+
+    const double det = out.determinant();
+    if (det < 0.5) {
+        err = det < -0.5
+                  ? "mirrors the frame (det = -1); a mirrored map has no rotation, so it "
+                    "cannot be applied to the controller orientation. Swap two axes and "
+                    "negate one of them, or use align_rpy_deg"
+                  : "repeats or drops an axis";
+        return false;
+    }
+    return true;
+}
+
 // "full, translation, ..., custom" -- for parameter-rejection messages.
 std::string modeNameList() {
     std::string s;
@@ -135,8 +205,20 @@ public:
         enable_button_index_ = declare<int>("enable_button_index", -1);    // -1 = use axis
 
         position_scale_    = declare<double>("position_scale", 0.5);
-        orientation_scale_ = declare<double>("orientation_scale", 1.0);    // 0..1 (1 = 1:1)
-        align_yaw_deg_     = declare<double>("align_yaw_deg", 0.0);
+        orientation_scale_ = declare<double>("orientation_scale", 0.20);    // 0..1 (1 = 1:1)
+        // Operator->robot frame: a signed axis permutation, then a roll/pitch/yaw
+        // rotation. Both apply to the translation *and* the rotation delta, so
+        // the two can never disagree.
+        axis_map_spec_ = declare<std::string>("quest_axis_map", "x,y,z");
+        align_rpy_deg_ = declare<std::vector<double>>("align_rpy_deg", {0.0, 0.0, 0.0});
+        // Extra rotation on the *orientation* delta only, applied in the operator
+        // frame before the transform above. Identity by default: one frame for
+        // both deltas is the consistent case, and this only exists for the rig
+        // where it genuinely is not (hand rotation axes mapped differently to the
+        // tool than hand translation axes).
+        rot_map_spec_ = declare<std::string>("rotation_axis_map", "x,y,z");
+        rot_rpy_deg_  = declare<std::vector<double>>("rotation_rpy_deg", {0.0, 0.0, 0.0});
+        debug_axes_.store(declare<bool>("debug_axes", false));
         max_target_step_   = declare<double>("max_target_step", 0.05);     // m per publish
         double stream_hz   = declare<double>("stream_rate_hz", 50.0);
 
@@ -156,9 +238,10 @@ public:
             "mode_cycle_list", {"full", "translation", "planar", "yaw"});
         validateCycleList();
 
-        // Operator->robot frame alignment (yaw about base +Z).
-        r_align_.setRPY(0.0, 0.0, align_yaw_deg_ * M_PI / 180.0);
-        r_align_.normalize();
+        if (!updateFrameTransform(axis_map_spec_, align_rpy_deg_, rot_map_spec_, rot_rpy_deg_)) {
+            RCLCPP_ERROR(node_->get_logger(),
+                         "Falling back to an identity operator->robot frame transform.");
+        }
 
         // --- ROS entities -------------------------------------------------
         target_pub_ = node_->create_publisher<geometry_msgs::msg::PoseStamped>(
@@ -210,9 +293,9 @@ public:
 
         RCLCPP_INFO(node_->get_logger(),
                     "quest_servo_teleop: pose<-%s enable<-%s target->%s | base=%s eef=%s "
-                    "pos_scale=%.2f align_yaw=%.1fdeg",
+                    "pos_scale=%.2f",
                     quest_pose_topic_.c_str(), enable_topic_.c_str(), pose_target_topic_.c_str(),
-                    base_frame_.c_str(), eef_frame_.c_str(), position_scale_, align_yaw_deg_);
+                    base_frame_.c_str(), eef_frame_.c_str(), position_scale_);
     }
 
 private:
@@ -241,6 +324,70 @@ private:
                     RCLCPP_WARN(node_->get_logger(), "Servo rejected POSE switch; retrying.");
                 }
             });
+    }
+
+    // --- operator->robot frame --------------------------------------------
+    // Axis map, then roll/pitch/yaw: R = R_rpy * M. Names are only for the error
+    // messages.
+    bool composeRotation(const std::string& spec, const std::string& spec_name,
+                         const std::vector<double>& rpy_deg, const std::string& rpy_name,
+                         tf2::Quaternion& out) const {
+        tf2::Matrix3x3 m;
+        std::string err;
+        if (!parseAxisMap(spec, m, err)) {
+            RCLCPP_ERROR(node_->get_logger(), "%s '%s' rejected: %s.",
+                         spec_name.c_str(), spec.c_str(), err.c_str());
+            return false;
+        }
+        if (rpy_deg.size() != 3) {
+            RCLCPP_ERROR(node_->get_logger(), "%s has %zu entries (expected 3).",
+                         rpy_name.c_str(), rpy_deg.size());
+            return false;
+        }
+        tf2::Quaternion q_map;
+        m.getRotation(q_map);
+        constexpr double kDeg = M_PI / 180.0;
+        tf2::Quaternion q_rpy;
+        q_rpy.setRPY(rpy_deg[0] * kDeg, rpy_deg[1] * kDeg, rpy_deg[2] * kDeg);
+        out = q_rpy * q_map;
+        out.normalize();
+        return true;
+    }
+
+    // q_frame_ maps the translation delta into the base frame. The orientation
+    // delta is conjugated by q_rot_frame_ = q_frame_ * E instead, where E is the
+    // extra rotation_* rotation applied in the operator frame first: a rotation
+    // about hand axis `a` comes out about robot axis `q_frame_ * (E * a)`. With E
+    // identity -- the default, and the only self-consistent case -- both deltas
+    // share one frame. E exists for the rig where the operator's rotation axes do
+    // not line up with their translation axes, which no single rotation can fix.
+    // Caller must not hold mtx_. Either half rejected leaves both unchanged.
+    bool updateFrameTransform(const std::string& spec, const std::vector<double>& rpy_deg,
+                              const std::string& rot_spec, const std::vector<double>& rot_rpy_deg) {
+        tf2::Quaternion q_base;
+        tf2::Quaternion q_extra;
+        if (!composeRotation(spec, "quest_axis_map", rpy_deg, "align_rpy_deg", q_base) ||
+            !composeRotation(rot_spec, "rotation_axis_map", rot_rpy_deg, "rotation_rpy_deg",
+                             q_extra)) {
+            return false;
+        }
+        tf2::Quaternion q_rot = q_base * q_extra;
+        q_rot.normalize();
+        {
+            std::lock_guard<std::mutex> lock(mtx_);
+            q_frame_ = q_base;
+            q_rot_frame_ = q_rot;
+        }
+        axis_map_spec_ = spec;
+        align_rpy_deg_ = rpy_deg;
+        rot_map_spec_ = rot_spec;
+        rot_rpy_deg_ = rot_rpy_deg;
+        RCLCPP_INFO(node_->get_logger(),
+                    "Operator->robot frame: axis map [%s], align rpy [%.1f, %.1f, %.1f] deg"
+                    " | rotation-only map [%s], rpy [%.1f, %.1f, %.1f] deg.",
+                    spec.c_str(), rpy_deg[0], rpy_deg[1], rpy_deg[2], rot_spec.c_str(),
+                    rot_rpy_deg[0], rot_rpy_deg[1], rot_rpy_deg[2]);
+        return true;
     }
 
     // --- DOF mode management ---------------------------------------------
@@ -360,6 +507,19 @@ private:
                     result.successful = false;
                     result.reason = "custom_dof_gain entries must be >= 0";
                 }
+            } else if (p.get_name() == "quest_axis_map" ||
+                       p.get_name() == "rotation_axis_map") {
+                tf2::Matrix3x3 unused;
+                std::string err;
+                if (!parseAxisMap(p.as_string(), unused, err)) {
+                    result.successful = false;
+                    result.reason = p.get_name() + " '" + p.as_string() + "': " + err;
+                }
+            } else if (p.get_name() == "align_rpy_deg" || p.get_name() == "rotation_rpy_deg") {
+                if (p.as_double_array().size() != 3) {
+                    result.successful = false;
+                    result.reason = p.get_name() + " needs 3 entries [roll, pitch, yaw] in degrees";
+                }
             }
         }
         if (!result.successful) {
@@ -379,7 +539,37 @@ private:
                 validateCycleList();
             } else if (p.get_name() == "mode_cycle_button") {
                 mode_cycle_button_ = static_cast<int>(p.as_int());
+            } else if (p.get_name() == "debug_axes") {
+                debug_axes_.store(p.as_bool());
             }
+        }
+
+        // Frame transform: recompose once per batch, then re-anchor, so the delta
+        // accumulated under the old mapping is discarded against a fresh anchor
+        // instead of stepping the target.
+        bool frame_changed = false;
+        std::string spec = axis_map_spec_;
+        std::vector<double> rpy = align_rpy_deg_;
+        std::string rot_spec = rot_map_spec_;
+        std::vector<double> rot_rpy = rot_rpy_deg_;
+        for (const auto& p : params) {
+            if (p.get_name() == "quest_axis_map") {
+                spec = p.as_string();
+                frame_changed = true;
+            } else if (p.get_name() == "align_rpy_deg") {
+                rpy = p.as_double_array();
+                frame_changed = true;
+            } else if (p.get_name() == "rotation_axis_map") {
+                rot_spec = p.as_string();
+                frame_changed = true;
+            } else if (p.get_name() == "rotation_rpy_deg") {
+                rot_rpy = p.as_double_array();
+                frame_changed = true;
+            }
+        }
+        if (frame_changed && updateFrameTransform(spec, rpy, rot_spec, rot_rpy) &&
+            engaged_.load()) {
+            reanchor();
         }
 
         // applyMode re-anchors and publishes, so run it at most once per batch.
@@ -398,6 +588,8 @@ private:
     // --- subscriptions ----------------------------------------------------
     void onQuestPose(geometry_msgs::msg::PoseStamped::SharedPtr msg) {
         std::lock_guard<std::mutex> lock(mtx_);
+        // Stored raw: q_frame_ maps both the position and the orientation delta
+        // into the robot base frame in streamTarget().
         c_now_.setValue(msg->pose.position.x, msg->pose.position.y, msg->pose.position.z);
         qc_now_.setValue(msg->pose.orientation.x, msg->pose.orientation.y,
                          msg->pose.orientation.z, msg->pose.orientation.w);
@@ -570,6 +762,9 @@ private:
             return;
         }
         geometry_msgs::msg::PoseStamped out;
+        tf2::Vector3 dbg_dp_hand{0, 0, 0}, dbg_dp_robot{0, 0, 0};
+        tf2::Vector3 dbg_axis_hand{0, 0, 0}, dbg_axis_robot{0, 0, 0};
+        double dbg_hand_angle = 0.0, dbg_robot_angle = 0.0;
         {
             std::lock_guard<std::mutex> lock(mtx_);
             if (!have_pose_) {
@@ -583,7 +778,7 @@ private:
             // `desired` equal to the anchor, which is what pins it.
             const tf2::Vector3 dp_quest = c_now_ - c0_;
             const tf2::Vector3 dp_robot =
-                maskTranslation(tf2::quatRotate(r_align_, dp_quest), q_mask) * position_scale_;
+                maskTranslation(tf2::quatRotate(q_frame_, dp_quest), q_mask) * position_scale_;
             const tf2::Vector3 desired = r0_ + dp_robot;
 
             // Clamp per-cycle target slew (rejects controller glitches/dropouts).
@@ -598,7 +793,7 @@ private:
             // frame, masked and damped per axis, then applied to the anchored EEF
             // orientation.
             tf2::Quaternion dq_quest = qc_now_ * qc0_.inverse();
-            tf2::Quaternion dq_robot = r_align_ * dq_quest * r_align_.inverse();
+            tf2::Quaternion dq_robot = q_rot_frame_ * dq_quest * q_rot_frame_.inverse();
             dq_robot.normalize();
             target_q_ = maskRotation(dq_robot, q_mask) * qr0_;
             target_q_.normalize();
@@ -610,10 +805,37 @@ private:
             out.pose.orientation.y = target_q_.y();
             out.pose.orientation.z = target_q_.z();
             out.pose.orientation.w = target_q_.w();
+
+            if (debug_axes_.load()) {
+                dbg_dp_hand = dp_quest;
+                dbg_dp_robot = dp_robot;
+                dbg_hand_angle = dq_quest.getAngle();
+                dbg_robot_angle = dq_robot.getAngle();
+                if (dbg_hand_angle > 1e-6) {
+                    dbg_axis_hand = dq_quest.getAxis();
+                    dbg_axis_robot = dq_robot.getAxis();
+                }
+            }
         }
         out.header.stamp = node_->now();
         out.header.frame_id = base_frame_;
         target_pub_->publish(out);
+
+        // Calibration aid: which hand axis drove which robot axis this cycle.
+        // Move or twist about one axis at a time and read the mapping off.
+        // Logged outside the lock, and throttled -- the stream runs at 50 Hz.
+        if (debug_axes_.load()) {
+            RCLCPP_INFO_THROTTLE(
+                node_->get_logger(), *node_->get_clock(), 500,
+                "axes | trans hand [%+.3f %+.3f %+.3f] -> base [%+.3f %+.3f %+.3f] | "
+                "rot %.1fdeg about hand [%+.2f %+.2f %+.2f] -> %.1fdeg about base "
+                "[%+.2f %+.2f %+.2f]",
+                dbg_dp_hand.x(), dbg_dp_hand.y(), dbg_dp_hand.z(),
+                dbg_dp_robot.x(), dbg_dp_robot.y(), dbg_dp_robot.z(),
+                dbg_hand_angle * 180.0 / M_PI, dbg_axis_hand.x(), dbg_axis_hand.y(),
+                dbg_axis_hand.z(), dbg_robot_angle * 180.0 / M_PI, dbg_axis_robot.x(),
+                dbg_axis_robot.y(), dbg_axis_robot.z());
+        }
     }
 
     // --- members ----------------------------------------------------------
@@ -623,7 +845,12 @@ private:
     std::string base_frame_, eef_frame_;
     int enable_axis_index_, enable_button_index_;
     double enable_axis_threshold_;
-    double position_scale_, orientation_scale_, align_yaw_deg_, max_target_step_;
+    double position_scale_, orientation_scale_, max_target_step_;
+
+    // Operator->robot frame. The spec/angles are only touched from executor
+    // callbacks; the composed q_frame_ is read by the stream thread under mtx_.
+    std::string axis_map_spec_, rot_map_spec_;
+    std::vector<double> align_rpy_deg_, rot_rpy_deg_;
 
     // DOF masking. Only touched from executor callbacks, except gain_.
     std::string motion_mode_{"full"};
@@ -646,8 +873,7 @@ private:
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
-    tf2::Quaternion r_align_;
-
+    std::atomic<bool> debug_axes_{false};
     std::atomic<bool> engaged_{false};
     std::atomic<bool> exec_active_{false};
     std::atomic<bool> pose_mode_set_{false};
@@ -655,6 +881,7 @@ private:
     std::mutex mtx_;                     // guards the fields below
     bool have_pose_{false};
     DofGain gain_{{1.0, 1.0, 1.0, 1.0, 1.0, 1.0}};
+    tf2::Quaternion q_frame_{0, 0, 0, 1}, q_rot_frame_{0, 0, 0, 1};
     tf2::Vector3 c_now_{0, 0, 0}, c0_{0, 0, 0}, r0_{0, 0, 0}, target_p_{0, 0, 0};
     tf2::Quaternion qc_now_{0, 0, 0, 1}, qc0_{0, 0, 0, 1}, qr0_{0, 0, 0, 1},
         target_q_{0, 0, 0, 1};

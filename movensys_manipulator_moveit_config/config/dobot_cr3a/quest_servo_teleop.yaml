@@ -21,8 +21,34 @@ quest_servo_teleop:
 
     # --- mapping ---
     position_scale: 0.5            # controller metres -> robot metres (start conservative)
-    orientation_scale: 1.0         # 0..1; 1.0 = 1:1 hand rotation
-    align_yaw_deg: 0.0             # rotate operator "forward" onto robot +X (calibrate)
+    orientation_scale: 0.20         # 0..1; 1.0 = 1:1 hand rotation
+
+    # --- operator -> robot frame -----------------------------------------
+    # Applied to the position delta AND the orientation delta, as one rotation,
+    # so translation and rotation can never disagree.
+    #
+    # quest_axis_map: signed permutation "<x-src>,<y-src>,<z-src>" mapping the
+    # Quest (ROS-convention) axes onto the robot base axes, e.g. "x,y,z" (none),
+    # "y,-x,z" (90 deg about +Z), "-y,x,z" (-90 deg). It must be a proper
+    # rotation: a plain swap like "y,x,z" mirrors the frame (det = -1) and is
+    # rejected, because a mirror cannot be applied to an orientation.
+    quest_axis_map: "y,-x,z"
+
+    # Extra roll/pitch/yaw [deg] about the robot base axes, applied after the
+    # map. Yaw rotates operator "forward" onto robot +X; calibrate this first.
+    align_rpy_deg: [0.0, 0.0, 0.0]
+
+    # Extra rotation applied to the ORIENTATION delta only, on top of the two
+    # above (same "<x-src>,<y-src>,<z-src>" / [roll, pitch, yaw] forms). Leave
+    # these at identity unless translation is already correct and only the wrist
+    # axes are wrong -- e.g. hand roll turns the tool in yaw. A rotation about
+    # hand axis a then comes out about robot axis  quest_axis_map * (this * a).
+    rotation_axis_map: "x,y,z"
+    rotation_rpy_deg: [0.0, 0.0, 0.0]
+
+    # Log, at 2 Hz while the clutch is held, which hand axis drove which robot
+    # axis. Move/twist about one axis at a time and read the mapping off.
+    debug_axes: false
     max_target_step: 0.05          # max target jump per publish [m] (glitch guard)
     stream_rate_hz: 50.0
 
