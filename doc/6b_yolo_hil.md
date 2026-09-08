@@ -1,4 +1,4 @@
-# YOLO Pick-and-Place (Real Hardware)
+# YOLO Pick-and-Place
 ## Execution Procedure
 
 ### Step 1: Open Isaac Sim
@@ -12,7 +12,7 @@
 
 
 ### Step 2: Run wmx-r2 for manipulator
-check `~/workspaces/movensys_ws/src/wmx-r2/doc/launch_<MANIPULATOR_MODEL>_manipulator.md` 
+check `~/workspaces/movensys_ws/src/wmx-r2/doc/launch_manipulator.md` 
 set `use_sim_time:=true`
 
 

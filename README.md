@@ -57,9 +57,9 @@ prefix selects the scenario; the trailing letter selects the execution mode.
 | 3  | Trajectory planning               | [3a](doc/3a_trajectory_simulation.md)                 | [3b](doc/3b_trajectory_hil.md)                 | [3c](doc/3c_trajectory_real.md)                 |
 | 4  | AprilTag pick-and-place           | [4a](doc/4a_apriltag_simulation.md)                   | [4b](doc/4b_apriltag_hil.md)                   | [4c](doc/4c_apriltag_real.md)                   |
 | 5  | Nvblox obstacle avoidance         | [5a](doc/5a_nvblox_simulation.md)                     | [5b](doc/5b_nvblox_hil.md)                     | [5c](doc/5c_nvblox_real.md)                     |
-| 6  | YOLO object detection             | [6a](doc/6a_yolo_simulation.md)                       | [6b](doc/6b_yolo_hil.md)                       | [6c](doc/6c_yolo_real.md)                       |
+| 6  | YOLO pick-and-place               | [6a](doc/6a_yolo_simulation.md)                       | [6b](doc/6b_yolo_hil.md)                       | [6c](doc/6c_yolo_real.md)                       |
 | 7  | AprilTag + Nvblox                 | [7a](doc/7a_apriltag_nvblox_simulation.md)            | [7b](doc/7b_apriltag_nvblox_hil.md)            | [7c](doc/7c_apriltag_nvblox_real.md)            |
-| 8  | VLA application                   | [8a](doc/8a_vla_simulation.md)                        | —                                              | —                                               |
+| 8  | VLA application (RoboPoly)        | [1a](https://github.com/movensys/movensys-intelligence/blob/main/movensys_sample/doc/1a_robopoly_simulation.md) | —                | [1c](https://github.com/movensys/movensys-intelligence/blob/main/movensys_sample/doc/1c_robopoly_real.md) |
 
 A ROS 2 API example (`doc/3d_api_example.md`) and host-setup guides
 (`doc/1_setup.md`, `doc/2_docker.md`) are also provided. RGB recording and

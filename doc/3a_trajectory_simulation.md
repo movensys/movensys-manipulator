@@ -12,7 +12,7 @@ mros ros2 launch movensys_manipulator_description gazebo_trajectory_simulation.l
 
 
 
-### Step 2a: Run simulator bridge
+### Step 2: Run simulator bridge
 ```
 mros ros2 launch movensys_manipulator_moveit_config sim_bridge.launch.py use_sim_time:=true
 ```

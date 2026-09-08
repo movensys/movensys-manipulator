@@ -1,4 +1,4 @@
-# YOLO Pick-and-Place (Real Hardware)
+# YOLO Pick-and-Place
 ## Execution Procedure
 
 ### Step 1: Open Isaac Sim
@@ -9,7 +9,7 @@
 
 
 ### Step 2: Run wmx-r2 for manipulator
-check `~/workspaces/movensys_ws/src/wmx-r2/doc/launch_<MANIPULATOR_MODEL>_manipulator.md`
+check `~/workspaces/movensys_ws/src/wmx-r2/doc/launch_manipulator.md`
 
 
 
@@ -28,7 +28,7 @@ add `rsp:=false` if use ros2_control.
 
 
 
-### Step 4: Launch the YOLO cube and dice detector
+### Step 4: Launch Yolo detector
 ```
 mros ros2 launch movensys_manipulator_perception yolo_dice_and_cube_detector.launch.py
 ```
@@ -37,25 +37,16 @@ mros ros2 launch movensys_manipulator_perception yolo_dice_and_cube_detector.lau
 
 
 
-
-
-
-
-
-
-
-#### Debug YOLO result (Optional)
-```bash
-ros2 run rqt_image_view rqt_image_view /yolo_dice_detector/debug_image
-
-ros2 run rqt_image_view rqt_image_view /yolo_cube_detector/debug_image
-```
-
-
-### Step 6: Execute YOLO pick-and-place (Optional)
+### Step 5: Execute YOLO pick-and-place
 ```
 mros ros2 launch movensys_manipulator_moveit_config yolo_pick_and_place.launch.py
 ```
 Loads pick/drop poses from `config/<MANIPULATOR_MODEL>/yolo_trajectory.yaml`.
 The node moves to the scan pose, visually servos over each cube in
 `cube_classes` order, picks it up, and places it in the per-class drop box.
+
+#### Debug YOLO result (Optional)
+```
+ros2 run rqt_image_view rqt_image_view /yolo_dice_detector/debug_image
+ros2 run rqt_image_view rqt_image_view /yolo_cube_detector/debug_image
+```

@@ -13,7 +13,7 @@ mros ros2 launch movensys_manipulator_description gazebo_trajectory_hil.launch.p
 
 
 ### Step 2: Run wmx-r2 for manipulator
-check `~/workspaces/movensys_ws/src/wmx-r2/doc/launch_<MANIPULATOR_MODEL>_manipulator.md` 
+check `~/workspaces/movensys_ws/src/wmx-r2/doc/launch_manipulator.md` 
 set `use_sim_time:=true`
 
 

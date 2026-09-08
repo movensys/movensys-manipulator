@@ -1,4 +1,4 @@
-# YOLO Pick-and-Place (Real Hardware)
+# YOLO Pick-and-Place
 ## Execution Procedure
 
 ### Step 1: Open Isaac Sim
@@ -53,7 +53,6 @@ mros ros2 launch movensys_manipulator_moveit_config yolo_pick_and_place.launch.p
 
 #### Debug YOLO result (Optional)
 ```
-ros2 run rqt_image_view rqt_image_view /yolo_dice_detector/debug_image
 ros2 run rqt_image_view rqt_image_view /yolo_cube_detector/debug_image
 ```
 

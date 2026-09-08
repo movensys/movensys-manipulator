@@ -10,7 +10,7 @@
 
 
 ### Step 2: Run wmx-r2 for manipulator
-check `~/workspaces/movensys_ws/src/wmx-r2/doc/launch_<MANIPULATOR_MODEL>_manipulator.md` 
+check `~/workspaces/movensys_ws/src/wmx-r2/doc/launch_manipulator.md` 
 set `use_sim_time:=true`
 
 
@@ -21,7 +21,7 @@ set `use_sim_time:=true`
 ```
 mros ros2 launch movensys_manipulator_isaac_ros_config isaac_cumotion_nvblox.launch.py use_sim_time:=true
 ```
-add `rsp:=false` if use gazebo (step 1b) or ros2_control.
+add `rsp:=false` if use ros2_control.
 
 
 
