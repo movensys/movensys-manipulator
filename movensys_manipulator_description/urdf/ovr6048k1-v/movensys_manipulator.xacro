@@ -118,7 +118,7 @@
         <mesh filename="file://$(find movensys_manipulator_description)/urdf/ovr6048k1-v/assets/Link4.STL"/>
       </geometry>
       <material name="Link4_material">
-        <color rgba="0.972549 0.529412 0.00392157 1"/>
+        <color rgba="1.0 1.0 1.0 1"/>
       </material>
     </visual>
     <collision>
