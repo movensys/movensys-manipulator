@@ -1,0 +1,237 @@
+<?xml version="1.0" ?>
+<!-- Generated using onshape-to-robot -->
+<!-- Onshape https://cad.onshape.com/documents/8467518fc311e7a9e25b0f7c/w/190c9a2e383e98b459766c2c/e/7359164a76e76e0ebae21425 -->
+<robot name="movensys_manipulator" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <link name="world"/>
+  <joint name="world_joint" type="fixed">
+    <parent link="world"/>
+    <child link="Link0"/>
+    <origin rpy="1.5708 0 0" xyz="0 0 0"/>
+  </joint>
+  <!-- Link Link0 -->
+  <link name="Link0">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="1e-09"/>
+      <inertia ixx="1e-09" ixy="0" ixz="0" iyy="1e-09" iyz="0" izz="1e-09"/>
+    </inertial>
+    <!-- Part Link0 -->
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0"/>
+      <geometry>
+        <mesh filename="file://$(find movensys_manipulator_description)/urdf/ovr6048k1-v/assets/Link0.STL"/>
+      </geometry>
+      <material name="Link0_material">
+        <color rgba="0.917647 0.917647 0.917647 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 -0 0"/>
+      <geometry>
+        <mesh filename="file://$(find movensys_manipulator_description)/urdf/ovr6048k1-v/assets/Link0.STL"/>
+      </geometry>
+    </collision>
+  </link>
+  <!-- Link Link1 -->
+  <link name="Link1">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="1e-09"/>
+      <inertia ixx="1e-09" ixy="0" ixz="0" iyy="1e-09" iyz="0" izz="1e-09"/>
+    </inertial>
+    <!-- Part Link1 -->
+    <visual>
+      <origin xyz="-0 -0.0945 0.059" rpy="-1.5708 -0 -0"/>
+      <geometry>
+        <mesh filename="file://$(find movensys_manipulator_description)/urdf/ovr6048k1-v/assets/Link1.STL"/>
+      </geometry>
+      <material name="Link1_material">
+        <color rgba="0.498039 0.498039 0.498039 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0 -0.0945 0.059" rpy="-1.5708 -0 -0"/>
+      <geometry>
+        <mesh filename="file://$(find movensys_manipulator_description)/urdf/ovr6048k1-v/assets/Link1.STL"/>
+      </geometry>
+    </collision>
+  </link>
+  <!-- Link Link2 -->
+  <link name="Link2">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="1e-09"/>
+      <inertia ixx="1e-09" ixy="0" ixz="0" iyy="1e-09" iyz="0" izz="1e-09"/>
+    </inertial>
+    <!-- Part Link2 -->
+    <visual>
+      <origin xyz="-0.135 0.0945 -0.0125" rpy="1.5708 1.5708 0"/>
+      <geometry>
+        <mesh filename="file://$(find movensys_manipulator_description)/urdf/ovr6048k1-v/assets/Link2.STL"/>
+      </geometry>
+      <material name="Link2_material">
+        <color rgba="0.768627 0.886275 0.952941 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.135 0.0945 -0.0125" rpy="1.5708 1.5708 0"/>
+      <geometry>
+        <mesh filename="file://$(find movensys_manipulator_description)/urdf/ovr6048k1-v/assets/Link2.STL"/>
+      </geometry>
+    </collision>
+  </link>
+  <!-- Link Link3 -->
+  <link name="Link3">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="1e-09"/>
+      <inertia ixx="1e-09" ixy="0" ixz="0" iyy="1e-09" iyz="0" izz="1e-09"/>
+    </inertial>
+    <!-- Part Link3 -->
+    <visual>
+      <origin xyz="-0.375 0.0945 0.0155" rpy="1.5708 1.5708 0"/>
+      <geometry>
+        <mesh filename="file://$(find movensys_manipulator_description)/urdf/ovr6048k1-v/assets/Link3.STL"/>
+      </geometry>
+      <material name="Link3_material">
+        <color rgba="0.647059 0.647059 0.647059 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.375 0.0945 0.0155" rpy="1.5708 1.5708 0"/>
+      <geometry>
+        <mesh filename="file://$(find movensys_manipulator_description)/urdf/ovr6048k1-v/assets/Link3.STL"/>
+      </geometry>
+    </collision>
+  </link>
+  <!-- Link Link4 -->
+  <link name="Link4">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="1e-09"/>
+      <inertia ixx="1e-09" ixy="0" ixz="0" iyy="1e-09" iyz="0" izz="1e-09"/>
+    </inertial>
+    <!-- Part Link4 -->
+    <visual>
+      <origin xyz="0 -0.0945 0.568" rpy="-1.5708 0 -0"/>
+      <geometry>
+        <mesh filename="file://$(find movensys_manipulator_description)/urdf/ovr6048k1-v/assets/Link4.STL"/>
+      </geometry>
+      <material name="Link4_material">
+        <color rgba="0.972549 0.529412 0.00392157 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 -0.0945 0.568" rpy="-1.5708 0 -0"/>
+      <geometry>
+        <mesh filename="file://$(find movensys_manipulator_description)/urdf/ovr6048k1-v/assets/Link4.STL"/>
+      </geometry>
+    </collision>
+  </link>
+  <!-- Link Link5 -->
+  <link name="Link5">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="1e-09"/>
+      <inertia ixx="1e-09" ixy="0" ixz="0" iyy="1e-09" iyz="0" izz="1e-09"/>
+    </inertial>
+    <!-- Part Link5 -->
+    <visual>
+      <origin xyz="-0.615 -0.0945 -0.0335" rpy="-1.5708 -1.5708 0"/>
+      <geometry>
+        <mesh filename="file://$(find movensys_manipulator_description)/urdf/ovr6048k1-v/assets/Link5.STL"/>
+      </geometry>
+      <material name="Link5_material">
+        <color rgba="0.615686 0.811765 0.929412 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.615 -0.0945 -0.0335" rpy="-1.5708 -1.5708 0"/>
+      <geometry>
+        <mesh filename="file://$(find movensys_manipulator_description)/urdf/ovr6048k1-v/assets/Link5.STL"/>
+      </geometry>
+    </collision>
+  </link>
+  <!-- Link Link6 -->
+  <link name="Link6">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="1e-09"/>
+      <inertia ixx="1e-09" ixy="0" ixz="0" iyy="1e-09" iyz="0" izz="1e-09"/>
+    </inertial>
+    <!-- Part Link6 -->
+    <visual>
+      <origin xyz="0 -0.0945 0.693" rpy="-1.5708 0 -0"/>
+      <geometry>
+        <mesh filename="file://$(find movensys_manipulator_description)/urdf/ovr6048k1-v/assets/Link6.STL"/>
+      </geometry>
+      <material name="Link6_material">
+        <color rgba="0.231373 0.380392 0.705882 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 -0.0945 0.693" rpy="-1.5708 0 -0"/>
+      <geometry>
+        <mesh filename="file://$(find movensys_manipulator_description)/urdf/ovr6048k1-v/assets/Link6.STL"/>
+      </geometry>
+    </collision>
+  </link>
+  <!-- Joint from Link0 to Link1 -->
+  <joint name="joint1" type="revolute">
+    <origin xyz="0 0.059 0.0945" rpy="1.5708 -0 -0"/>
+    <parent link="Link0"/>
+    <child link="Link1"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="0.5" lower="-2.96705972839036" upper="2.96705972839036"/>
+  </joint>
+  <!-- Joint from Link1 to Link2 -->
+  <joint name="joint2" type="revolute">
+    <origin xyz="-0.0125 -0 -0.076" rpy="3.14159 1.5708 0"/>
+    <parent link="Link1"/>
+    <child link="Link2"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="0.5" lower="-1.88496" upper="1.02974"/>
+  </joint>
+  <!-- Joint from Link2 to Link3 -->
+  <joint name="joint3" type="revolute">
+    <origin xyz="0.24 2.39751e-07 -0.028" rpy="-0 -0 -0"/>
+    <parent link="Link2"/>
+    <child link="Link3"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="0.5" lower="-2.61799" upper="2.33874"/>
+  </joint>
+  <!-- Joint from Link3 to Link4 -->
+  <joint name="joint4" type="revolute">
+    <origin xyz="0.193 -0 0.0155" rpy="-3.14159 1.5708 0"/>
+    <parent link="Link3"/>
+    <child link="Link4"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="0.5" lower="-2.96705972839036" upper="2.96705972839036"/>
+  </joint>
+  <!-- Joint from Link4 to Link5 -->
+  <joint name="joint5" type="revolute">
+    <origin xyz="0.0335 -0 -0.047" rpy="-0 1.5708 0"/>
+    <parent link="Link4"/>
+    <child link="Link5"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="0.5" lower="-1.85005" upper="2.04204"/>
+  </joint>
+  <!-- Joint from Link5 to Link6 -->
+  <joint name="joint6" type="revolute">
+    <origin xyz="0.078 0 -0.0335" rpy="-0 -1.5708 0"/>
+    <parent link="Link5"/>
+    <child link="Link6"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="0.5" lower="-2.96705972839036" upper="2.96705972839036"/>
+  </joint>
+  <!-- Compatibility frame; the supplied world transform is unchanged. -->
+  <link name="world_manipulator"/>
+  <joint name="world_manipulator_to_world" type="fixed">
+    <parent link="world_manipulator"/><child link="world"/>
+  </joint>
+  <!-- Flange frame only: no tool/TCP offset has been supplied. -->
+  <link name="tool0"/>
+  <joint name="flange_to_tool0" type="fixed">
+    <parent link="Link6"/><child link="tool0"/>
+  </joint>
+</robot>

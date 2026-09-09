@@ -1,0 +1,87 @@
+format: "xrdf"
+
+format_version: 1.0
+
+# Integration frames for the existing Movensys URDF.
+modifiers:
+  - set_base_frame: "world_manipulator"
+tool_frames: ["tool0"]
+
+default_joint_positions:
+  joint1: -0.0
+  joint2: 1.0e-04
+  joint3: 1.0e-04
+  joint4: 0.0
+  joint5: -0.0002
+  joint6: -0.0
+
+cspace:
+  joint_names:
+    - "joint1"
+    - "joint2"
+    - "joint3"
+    - "joint4"
+    - "joint5"
+    - "joint6"
+  acceleration_limits: [10, 10, 10, 10, 10, 10]
+  jerk_limits: [10000, 10000, 10000, 10000, 10000, 10000]
+
+collision:
+  geometry: "auto_generated_collision_sphere_group"
+
+self_collision:
+  geometry: "auto_generated_collision_sphere_group"
+  ignore:
+    Link0:
+      - "Link1"
+    Link1:
+      - "Link2"
+    Link2:
+      - "Link3"
+    Link3:
+      - "Link4"
+    Link4:
+      - "Link5"
+    Link5:
+      - "Link6"
+
+geometry:
+  auto_generated_collision_sphere_group:
+    spheres:
+      Link0:
+        - center: [0.0, -0.0, -0.037]
+          radius: 0.0395
+        - center: [-0.001, -0.001, 0.03]
+          radius: 0.0379
+        - center: [0.0, -0.0, 0.117]
+          radius: 0.0395
+      Link1:
+        - center: [-0.049, -0.001, -0.075]
+          radius: 0.0391
+        - center: [-0.132, 0.001, -0.075]
+          radius: 0.0391
+      Link2:
+        - center: [0.151, -0.001, -0.026]
+          radius: 0.03
+        - center: [0.237, 0.005, 0.122]
+          radius: 0.036
+        - center: [0.05, 0.002, -0.01]
+          radius: 0.0383
+        - center: [0.238, -0.031, 0.011]
+          radius: 0.0254
+      Link3:
+        - center: [0.131, 0.001, 0.029]
+          radius: 0.0231
+        - center: [0.005, 0.005, -0.011]
+          radius: 0.04
+        - center: [0.135, -0.013, -0.04]
+          radius: 0.03
+      Link4:
+        - center: [0.053, 0.002, -0.036]
+          radius: 0.0322
+      Link5:
+        - center: [0.025, -0.0, -0.034]
+          radius: 0.0339
+      Link6:
+        - center: [-0.009, -0.006, -0.004]
+          radius: 0.0158
