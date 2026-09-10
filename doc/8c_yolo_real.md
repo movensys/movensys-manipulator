@@ -1,4 +1,4 @@
-# YOLO Pick-and-Place
+# YOLO Pick-and-Place (Real)
 ## Execution Procedure
 
 ### Step 1: Open Isaac Sim

@@ -1,4 +1,4 @@
-# Nvblox Obstacle Avoidance
+# Nvblox Obstacle Avoidance (HIL)
 ## Execution Procedure
 
 ### Step 1: Open Isaac Sim
