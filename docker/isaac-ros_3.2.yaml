@@ -103,10 +103,17 @@ services:
 
             echo "Downloading $$PACKAGE assets..."
 
-            local VERSION_URL="https://catalog.ngc.nvidia.com/api/resources/versions?orgName=nvidia&teamName=isaac&name=$$RESOURCE&isPublic=true&pageNumber=0&pageSize=100&sortOrder=CREATED_DATE_DESC"
-            local AVAILABLE_VERSIONS=$$(curl -s -H "Accept: application/json" "$$VERSION_URL")
+            # catalog.ngc.nvidia.com/api now returns an HTML page; use the public v2 API instead.
+            local VERSION_URL="https://api.ngc.nvidia.com/v2/resources/nvidia/isaac/$$RESOURCE/versions"
+            local AVAILABLE_VERSIONS=$$(curl -sL -H "Accept: application/json" "$$VERSION_URL")
 
             AVAILABLE_VERSIONS=$$(echo "$$AVAILABLE_VERSIONS" | tr -d '\r')
+
+            if ! jq -e '.recipeVersions' <<< "$$AVAILABLE_VERSIONS" >/dev/null 2>&1; then
+                echo "Failed to fetch version list for $$RESOURCE from $$VERSION_URL"
+                echo "Response was: $$(head -c 200 <<< "$$AVAILABLE_VERSIONS")"
+                return 1
+            fi
 
             local LATEST_VERSION_ID=$$(jq -r '
                 .recipeVersions[]
