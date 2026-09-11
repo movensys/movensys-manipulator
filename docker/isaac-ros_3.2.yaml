@@ -83,7 +83,14 @@ services:
         [ -d isaac_ros_common ]     || git clone -b release-3.2 https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_common.git isaac_ros_common
         [ -d isaac_manipulator ]    || git clone --recursive -b release-3.2 https://github.com/NVIDIA-ISAAC-ROS/isaac_manipulator.git isaac_manipulator
         [ -d isaac_ros_nvblox ]     || git clone --recursive -b release-3.2 https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_nvblox.git isaac_ros_nvblox
+        ROBOTIQ_GRIPPER_REF=21b7bfb0032377d7dbded5a73a841741f27f5e2d
         [ -d ros2_robotiq_gripper ] || git clone --recursive https://github.com/NVIDIA-ISAAC-ROS/ros2_robotiq_gripper
+        if [ "$$(git -C ros2_robotiq_gripper rev-parse HEAD)" != "$$ROBOTIQ_GRIPPER_REF" ]; then
+          echo "Checking out ros2_robotiq_gripper @ $$ROBOTIQ_GRIPPER_REF (Humble-compatible)"
+          git -C ros2_robotiq_gripper fetch -q origin $$ROBOTIQ_GRIPPER_REF
+          git -C ros2_robotiq_gripper checkout -q $$ROBOTIQ_GRIPPER_REF
+          git -C ros2_robotiq_gripper submodule update --init --recursive
+        fi
         [ -d serial ]               || git clone -b ros2 https://github.com/tylerjw/serial
 
         echo ====== Download NVIDIA Isaac ROS assets =======
