@@ -82,11 +82,13 @@ RUN apt-get update && \
         ros-${ROS_DISTRO}-ros-gz-bridge \
         ros-${ROS_DISTRO}-gz-sim-vendor \
         ros-${ROS_DISTRO}-gz-transport-vendor; \
-    elif [ "$ROS_DISTRO" = "humble" ]; then \
+    elif [ "$ROS_DISTRO" = "humble" ] && [ "$(dpkg --print-architecture)" = "amd64" ]; then \
       apt-get install -y \
         ros-${ROS_DISTRO}-ros-ign-gazebo \
         ros-${ROS_DISTRO}-ign-ros2-control \
         ros-${ROS_DISTRO}-ros-ign-bridge; \
+    else \
+      echo "Skipping Gazebo install: no ros-${ROS_DISTRO} Gazebo/ign binaries for $(dpkg --print-architecture) on packages.ros.org"; \
     fi && \
     rm -rf /var/lib/apt/lists/*
 
