@@ -32,6 +32,13 @@ find_package(tf2_ros REQUIRED)
 find_package(tf2_msgs REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(tl_expected REQUIRED)
+find_package(Boost REQUIRED COMPONENTS random)
+if(NOT TARGET tl::expected AND TARGET tl_expected::tl_expected)
+  add_library(tl::expected INTERFACE IMPORTED)
+  set_target_properties(tl::expected PROPERTIES
+    INTERFACE_LINK_LIBRARIES tl_expected::tl_expected)
+endif()
 
 # MoveIt Servo's ServoCommandType service only exists on Jazzy and newer; it is
 # absent on Humble. Guard the servo teleop executables so the package still

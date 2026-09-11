@@ -57,6 +57,9 @@ RUN apt-get update && apt-get install -y curl gpg && \
 RUN apt-get update && apt-get install --only-upgrade -y \
         ros-humble-rclcpp-action \
         ros-humble-moveit* \
+        ros-humble-tl-expected \
+        ros-humble-geometric-shapes \
+        ros-humble-random-numbers \
     && rm -rf /var/lib/apt/lists/*
 
 RUN sudo apt-get update
