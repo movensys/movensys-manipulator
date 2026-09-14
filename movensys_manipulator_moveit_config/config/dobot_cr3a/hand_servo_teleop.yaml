@@ -1,0 +1,128 @@
+# MediaPipe hand -> MoveIt Servo POSE teleop (relative clutch).
+#
+# Derived from quest_servo_teleop.yaml. Same node, same executable; only the
+# pose source and the operator->robot frame differ. The pose source is the
+# perception venv publishing rclpy directly (phase 2), so there is no relay
+# process and no wire format between the camera and this node.
+#
+# Top-level key is the wildcard `/**` on purpose. Parameter files match on the
+# node's *final* name, and a key that does not match means every parameter
+# below falls back to its **code** default rather than erroring -- including
+# quest_axis_map, whose code default is the identity "x,y,z". That presents as
+# a calibration problem rather than a config one, and it is the single easiest
+# way to lose a day here. The wildcard cannot mismatch.
+/**:
+  ros__parameters:
+    # --- topics / services -----------------------------------------------
+    # Published by perception/ros_node.py. The pose is the RAW camera-frame
+    # P_hand and R_hand: no frame maths happens on the perception side, so
+    # the operator->robot rotation stays runtime-tunable here, against a live
+    # arm, without a rebuild.
+    quest_pose_topic: /hand_pose
+    enable_topic:     /hand_joy
+    pose_target_topic: /servo_node/pose_target_cmds
+    switch_service:    /servo_node/switch_command_type
+
+    # --- frames (match servo.yaml: planning_frame / ee_frame) ------------
+    base_frame: world_manipulator
+    eef_frame:  Link6
+
+    # --- clutch / deadman -------------------------------------------------
+    # /hand_joy carries exactly one axis:
+    #   axes[0] = 1.0 while the clutch is ENGAGED, 0.0 otherwise.
+    # The Quest used axis 3, its analog grip, with a 0.6 threshold chosen to
+    # sit inside a squeeze. This clutch is already binary by the time it gets
+    # here -- perception/clutch.py decides it, from PINCH held across 9
+    # consecutive frames with a publishable pose on every one -- so the
+    # threshold only has to separate 0.0 from 1.0.
+    enable_axis_index: 0
+    enable_axis_threshold: 0.5
+    enable_button_index: -1        # >=0 would override the axis; keep it off
+
+    # --- mapping ----------------------------------------------------------
+    # Deliberately below the shipped 0.5 until all three axes are confirmed to
+    # move the tool the way the operator expects. Raised in phase 8.
+    position_scale: 0.2
+    orientation_scale: 0.20        # 0..1; 1.0 = 1:1 hand rotation
+
+    # --- operator -> robot frame -----------------------------------------
+    # Applied to the position delta AND the orientation delta, as one
+    # rotation, so translation and rotation can never disagree.
+    #
+    # "z,-x,-y" is the RealSense *optical* frame (x right, y down, z forward)
+    # onto the ROS body frame (x forward, y left, z up), which is the
+    # convention perception/position.py and perception/orientation.py both
+    # work in:
+    #
+    #     hand right      (+x_cam) -> base -Y
+    #     hand down       (+y_cam) -> base -Z
+    #     hand from lens  (+z_cam) -> base +X
+    #
+    # Determinant is +1, which matters: the node rejects a mirror outright,
+    # because a mirror cannot be applied to an orientation. The shipped
+    # "y,-x,z" is a 90-degree yaw and is Quest-specific -- it is not this.
+    quest_axis_map: "z,-x,-y"
+
+    # Extra roll/pitch/yaw [deg] about the robot base axes, applied after the
+    # map. This is the whole of the hand-eye calibration: the clutch is purely
+    # differential (dp = c_now - c0, dq = q_now * q0^-1) and both frames are
+    # metric at unit scale, so the translation of T_cam->robot cancels and only
+    # the rotation is ever needed.
+    #
+    # Zeros here is a starting point, not an answer. Phase 4 walks it live:
+    #   ros2 param set /hand_servo_teleop align_rpy_deg "[0.0, 45.0, 180.0]"
+    # Both mapping parameters are runtime-settable and re-anchor the clutch on
+    # change, so no rebuild. Start near [0, 45, 180] for a 45-degree overhead
+    # mount facing the operator.
+    align_rpy_deg: [0.0, 0.0, 0.0]
+
+    # Identity, and it should stay identity: R_hand's columns are expressed in
+    # camera coordinates, the same frame as P_hand, so one rotation is the
+    # consistent case. Only touch these if translation is already correct and
+    # the wrist axes alone are wrong.
+    rotation_axis_map: "x,y,z"
+    rotation_rpy_deg: [0.0, 0.0, 0.0]
+
+    # Logs, at 2 Hz while the clutch is held, which hand axis drove which
+    # robot axis, after scaling and masking. Phase 4 reads this. Move along
+    # ONE camera axis at a time and read the mapping off.
+    debug_axes: true
+    max_target_step: 0.05          # max target jump per publish [m] (glitch guard)
+    stream_rate_hz: 50.0
+
+    # --- DOF modes --------------------------------------------------------
+    # The clutch delta is multiplied by a per-axis gain [tx,ty,tz,rx,ry,rz]
+    # before it is applied to the anchor: 0 pins that axis at its anchored
+    # value, 1 follows the hand 1:1, values between damp it. Presets:
+    #   full         1 1 1 | 1 1 1   6-DOF
+    #   translation  1 1 1 | 0 0 0   position only, orientation held
+    #   rotation     0 0 0 | 1 1 1   orientation only, position held
+    #   planar       1 1 0 | 0 0 1   tabletop: XY + yaw
+    #   vertical     0 0 1 | 0 0 0   straight up/down
+    #   yaw / pitch / roll           one rotation axis only
+    #   custom       from custom_dof_gain below
+    #
+    # Starts pinned to translation: orientation is the harder half to verify
+    # and a wrong rotation sign is not visible until the tool is already
+    # turning the wrong way. Switch at runtime with
+    #   ros2 param set /hand_servo_teleop motion_mode full
+    # once all three translation axes are confirmed. Every switch re-anchors
+    # the clutch, so the arm does not jump.
+    motion_mode: translation
+
+    # Axes the mask is expressed in:
+    #   base - the robot base frame (rz = yaw, ry = pitch, rx = roll about it)
+    #   tool - the EEF axes *as anchored at clutch engage*, for approach-axis
+    #          work like insertion. Not the live tool frame: that would rotate
+    #          the constraint surface out from under the operator.
+    mask_frame: base
+
+    # Used only when motion_mode is "custom". Entries must be >= 0.
+    custom_dof_gain: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+
+    # --- in-headset mode switching ----------------------------------------
+    # Quest-only: it indexes Joy.buttons, and /hand_joy publishes none. Left
+    # at -1 (disabled); a rising edge on a button that does not exist cannot
+    # fire, but being explicit costs nothing.
+    mode_cycle_button: -1
+    mode_cycle_list: ["full", "translation", "planar", "yaw"]
