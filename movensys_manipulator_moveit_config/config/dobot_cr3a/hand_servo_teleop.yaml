@@ -90,6 +90,29 @@
     max_target_step: 0.05          # max target jump per publish [m] (glitch guard)
     stream_rate_hz: 50.0
 
+    # --- pose watchdog (phase 6) -------------------------------------------
+    # The newest /hand_pose must be younger than this -- its header stamp
+    # against this node's clock -- or the clutch drops, streaming stops (Servo
+    # then halts on its own 0.1 s incoming_command_timeout) and engage is
+    # refused until a fresh pose arrives. This is the one stop that works when
+    # the perception process is dead, frozen, or its camera has stalled: none
+    # of those produce a /hand_joy release, and with PUSH disabled and the
+    # pinch release at 9 cm it is the only stop that does not need the hand
+    # to be tracked.
+    #
+    # 0.15 s is ~3.6 frames at 24 Hz: two dropped frames pass, four trip it.
+    # Measured 2026-09-15 against the replay: pose age median 18 ms, p95
+    # 142 ms, ~5% over 150 ms -- all of them inside tracking loss with the
+    # clutch already released, none while engaged. So it does not fire in
+    # normal use. The header stamp is used, not arrival time, because the
+    # perception timer restreams a frozen pose during a camera stall and
+    # arrival time would hide exactly that.
+    #
+    # Both nodes MUST agree on use_sim_time. If they do not, every pose is
+    # ~1.7e9 s stale (or in the future) and the node refuses to engage, saying
+    # so in the log. That is the intended failure: loud, not silent.
+    pose_timeout_s: 0.15
+
     # --- DOF modes --------------------------------------------------------
     # The clutch delta is multiplied by a per-axis gain [tx,ty,tz,rx,ry,rz]
     # before it is applied to the anchor: 0 pins that axis at its anchored

@@ -25,6 +25,19 @@
 // next press re-anchors -- so the operator can recenter their hand without moving
 // the robot (the "mouse-lift" clutch).
 //
+// Pose watchdog: the release above depends on the *publisher* noticing that it
+// should let go. If the publisher dies, freezes, or its sensor stalls, no
+// release ever arrives and this node would stream the last target forever --
+// Servo never times out because commands keep coming. So every stream cycle
+// checks the age of the newest pose (its header stamp against this node's
+// clock) against `pose_timeout_s`. Stale: the clutch drops, streaming stops
+// and Servo halts on its own incoming_command_timeout; engage() refuses until
+// a fresh pose arrives, so a still-held enable cannot re-anchor onto a frozen
+// pose and then chase the accumulated motion when the stream resumes. The
+// header stamp is used rather than arrival time on purpose: a publisher that
+// republishes a frozen pose from a timer is exactly the case arrival time
+// would hide.
+//
 // Operator->robot frame: `quest_axis_map` (a signed axis permutation, det must
 // be +1) composed with `align_rpy_deg` forms one rotation, applied to the
 // position delta *and* the orientation delta. Both are runtime-settable and
@@ -221,6 +234,9 @@ public:
         debug_axes_.store(declare<bool>("debug_axes", false));
         max_target_step_   = declare<double>("max_target_step", 0.05);     // m per publish
         double stream_hz   = declare<double>("stream_rate_hz", 50.0);
+        // Pose watchdog (see the header comment). 0.15 s is ~3.6 frames of a
+        // 24 Hz vision source: two dropped frames pass, four trip it.
+        pose_timeout_s_.store(declare<double>("pose_timeout_s", 0.15));
 
         // DOF masking.
         const std::string mode = declare<std::string>("motion_mode", "full");
@@ -293,9 +309,10 @@ public:
 
         RCLCPP_INFO(node_->get_logger(),
                     "quest_servo_teleop: pose<-%s enable<-%s target->%s | base=%s eef=%s "
-                    "pos_scale=%.2f",
+                    "pos_scale=%.2f pose_timeout=%.3fs",
                     quest_pose_topic_.c_str(), enable_topic_.c_str(), pose_target_topic_.c_str(),
-                    base_frame_.c_str(), eef_frame_.c_str(), position_scale_);
+                    base_frame_.c_str(), eef_frame_.c_str(), position_scale_,
+                    pose_timeout_s_.load());
     }
 
 private:
@@ -520,6 +537,11 @@ private:
                     result.successful = false;
                     result.reason = p.get_name() + " needs 3 entries [roll, pitch, yaw] in degrees";
                 }
+            } else if (p.get_name() == "pose_timeout_s") {
+                if (!(p.as_double() > 0.0)) {
+                    result.successful = false;
+                    result.reason = "pose_timeout_s must be > 0 seconds";
+                }
             }
         }
         if (!result.successful) {
@@ -541,6 +563,8 @@ private:
                 mode_cycle_button_ = static_cast<int>(p.as_int());
             } else if (p.get_name() == "debug_axes") {
                 debug_axes_.store(p.as_bool());
+            } else if (p.get_name() == "pose_timeout_s") {
+                pose_timeout_s_.store(p.as_double());
             }
         }
 
@@ -587,13 +611,71 @@ private:
 
     // --- subscriptions ----------------------------------------------------
     void onQuestPose(geometry_msgs::msg::PoseStamped::SharedPtr msg) {
+        // The stamp is when the pose was *valid*, set by the publisher when its
+        // sensor frame arrived -- not when this message was sent. A publisher
+        // that restreams its last pose from a timer keeps that stamp, so a
+        // stalled sensor shows up here as a stamp that stops advancing while
+        // messages keep coming. That is what the watchdog reads. Arrival time
+        // is only the fallback for a publisher that leaves the stamp at zero.
+        // Built with this node's clock type so the subtraction in
+        // poseFreshLocked() cannot throw on a clock-type mismatch.
+        rclcpp::Time stamp(msg->header.stamp, node_->get_clock()->get_clock_type());
+        if (stamp.nanoseconds() == 0) {
+            stamp = node_->now();
+        }
         std::lock_guard<std::mutex> lock(mtx_);
         // Stored raw: q_frame_ maps both the position and the orientation delta
         // into the robot base frame in streamTarget().
         c_now_.setValue(msg->pose.position.x, msg->pose.position.y, msg->pose.position.z);
         qc_now_.setValue(msg->pose.orientation.x, msg->pose.orientation.y,
                          msg->pose.orientation.z, msg->pose.orientation.w);
+        pose_stamp_ = stamp;
         have_pose_ = true;
+    }
+
+    // Age of the newest pose against this node's clock, and whether it is fresh
+    // enough to act on. Caller holds mtx_. A stamp far in the *future* is stale
+    // too: that is the two nodes disagreeing about use_sim_time (wall epoch is
+    // ~1.7e9 s, sim time is seconds since the world started), and nothing can
+    // measure the age of such a pose, so nothing should act on it.
+    bool poseFreshLocked(double& age_s) const {
+        if (!have_pose_) {
+            age_s = 0.0;
+            return false;
+        }
+        age_s = (node_->now() - pose_stamp_).seconds();
+        const double timeout = pose_timeout_s_.load();
+        return age_s <= timeout && age_s >= -timeout;
+    }
+
+    // The watchdog itself, run at the top of every stream cycle. Returns false
+    // when nothing may be streamed this cycle. Drops the clutch on a stale pose
+    // and logs once per episode: engaged_ goes false here, streamTarget() then
+    // early-outs on every later cycle, and the next log is the next drop.
+    // Servo halts on its own incoming_command_timeout once the stream stops;
+    // this node never commands motion to get the arm anywhere -- stopping is
+    // the only action. Re-engaging is engage()'s job and is gated on freshness
+    // there, so a still-held enable waits for a fresh pose.
+    bool watchdogOk() {
+        double age_s = 0.0;
+        bool fresh = false;
+        bool had_pose = false;
+        {
+            std::lock_guard<std::mutex> lock(mtx_);
+            had_pose = have_pose_;
+            fresh = poseFreshLocked(age_s);
+        }
+        if (fresh) {
+            return true;
+        }
+        if (had_pose && engaged_.exchange(false)) {
+            RCLCPP_WARN(node_->get_logger(),
+                        "Pose watchdog: newest pose is %.0f ms old (timeout %.0f ms). Clutch "
+                        "dropped, streaming stopped; Servo halts on its own timeout. Engage is "
+                        "refused until a fresh pose arrives.",
+                        age_s * 1e3, pose_timeout_s_.load() * 1e3);
+        }
+        return false;
     }
 
     void onJoy(sensor_msgs::msg::Joy::SharedPtr msg) {
@@ -655,9 +737,22 @@ private:
             return;
         }
         std::lock_guard<std::mutex> lock(mtx_);
-        if (!have_pose_) {
-            RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
-                                 "Clutch engage aborted: no controller pose yet.");
+        double age_s = 0.0;
+        if (!poseFreshLocked(age_s)) {
+            if (!have_pose_) {
+                RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
+                                     "Clutch engage aborted: no controller pose yet.");
+            } else {
+                // Anchoring to a stale pose would replay every bit of motion
+                // that happened while it was stale the moment fresh poses
+                // return. The enable is still held, so onJoy() retries on each
+                // message and this succeeds on the first fresh pose.
+                RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
+                                     "Clutch engage refused: pose is %.0f ms old (timeout %.0f "
+                                     "ms). Waiting for a fresh pose. If this persists with the "
+                                     "publisher running, the two nodes disagree on use_sim_time.",
+                                     age_s * 1e3, pose_timeout_s_.load() * 1e3);
+            }
             return;
         }
         latchLocked(r0, qr0);
@@ -759,6 +854,9 @@ private:
     // --- streaming --------------------------------------------------------
     void streamTarget() {
         if (!engaged_.load() || exec_active_.load()) {
+            return;
+        }
+        if (!watchdogOk()) {
             return;
         }
         geometry_msgs::msg::PoseStamped out;
@@ -877,9 +975,11 @@ private:
     std::atomic<bool> engaged_{false};
     std::atomic<bool> exec_active_{false};
     std::atomic<bool> pose_mode_set_{false};
+    std::atomic<double> pose_timeout_s_{0.15};  // watchdog; runtime-settable
 
     std::mutex mtx_;                     // guards the fields below
     bool have_pose_{false};
+    rclcpp::Time pose_stamp_;            // validity time of c_now_/qc_now_ (node clock type)
     DofGain gain_{{1.0, 1.0, 1.0, 1.0, 1.0, 1.0}};
     tf2::Quaternion q_frame_{0, 0, 0, 1}, q_rot_frame_{0, 0, 0, 1};
     tf2::Vector3 c_now_{0, 0, 0}, c0_{0, 0, 0}, r0_{0, 0, 0}, target_p_{0, 0, 0};

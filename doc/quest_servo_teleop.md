@@ -136,6 +136,13 @@ a 40° yaw masks to 39.1° of yaw, not 40°.
 - `orientation_scale` — `1.0` = 1:1 wrist rotation; lower to damp it.
 - `motion_mode` / `mask_frame` / `custom_dof_gain` — see **Constrained motion**.
 - `max_target_step` — per-cycle target clamp (glitch guard).
+- `pose_timeout_s` — pose watchdog, default `0.15`. The newest pose's header stamp is
+  checked against the node clock every stream cycle. Stale: the clutch drops, streaming
+  stops (Servo halts on `incoming_command_timeout`), and engage is refused until a
+  fresh pose arrives, so a still-held grip cannot re-anchor onto a frozen pose. This is
+  the stop for a dead or frozen publisher, which never sends a grip release. The two
+  nodes must agree on `use_sim_time`; if not, every pose is stale by ~1.7e9 s and the
+  refusal says so in the log.
 - Servo speed/collision limits live in `config/dobot_cr3a/servo.yaml`
   (`scale.linear/rotational`, singularity thresholds, `check_collisions`).
 
