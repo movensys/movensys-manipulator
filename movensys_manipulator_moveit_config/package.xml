@@ -33,6 +33,8 @@
   <depend>octomap</depend>
   <depend>octomap_msgs</depend>
   <depend>eigen</depend>
+  <depend>tl_expected</depend>
+  <depend>boost</depend>
 
   <exec_depend>moveit_configs_utils</exec_depend>
   <exec_depend>moveit_servo</exec_depend>

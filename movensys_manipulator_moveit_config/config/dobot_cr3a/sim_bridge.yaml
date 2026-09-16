@@ -1,4 +1,4 @@
-isaacsim_bridge:
+sim_bridge:
   ros__parameters:
     joint_names:
       - joint1
@@ -7,7 +7,14 @@ isaacsim_bridge:
       - joint4
       - joint5
       - joint6
-    joint_command_topic: /joint_command
+    gripper_joint_names:
+      - picker_1_joint
+      - picker_2_joint
+    gripper_open:  0.000
+    gripper_close: 0.045
+    gazebo_command_topic:   /gazebo_position_controller/commands
+    isaacsim_command_topic: /joint_command
     joint_states_topic:  /joint_states
+    set_gripper_service: /wmx/set_gripper
     action_name: /movensys_manipulator_arm_controller/follow_joint_trajectory
     servo_command_topic: /movensys_manipulator_arm_controller/joint_trajectory

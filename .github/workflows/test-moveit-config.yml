@@ -54,9 +54,9 @@ jobs:
           source /opt/ros/${{ matrix.ros_distro }}/setup.bash
           cd ~/movensys_ws
           source install/setup.bash
-          echo '=== launch test: sim_bridge (isaacsim) ==='
+          echo '=== launch test: sim_bridge ==='
           timeout 30s ros2 launch movensys_manipulator_moveit_config sim_bridge.launch.py \
-            simulator:=isaacsim use_sim_time:=true \
+            use_sim_time:=true \
             || [ $? -eq 124 ] && echo '  OK: sim_bridge exited after 30s'
 
       - name: Test moveit launch file

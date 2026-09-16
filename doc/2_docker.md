@@ -5,10 +5,10 @@ please follow this isaac-ros setup first:
  
 # 2. Docker setup
 ```
-cd ${MOVENSYS_MANIPULATOR_PACKAGES}/docker                                                                              
+cd ~/workspaces/movensys_ws/src/movensys-manipulator/docker
 docker compose -f ${MOVENSYS_ROS_VERSION}.yaml -f movensys_manipulator.${CPU_ARCH}.yaml down
-docker compose -f ${MOVENSYS_ROS_VERSION}.yaml -f movensys_manipulator.${CPU_ARCH}.yaml build            
-docker compose -f ${MOVENSYS_ROS_VERSION}.yaml -f movensys_manipulator.${CPU_ARCH}.yaml up -d 
+docker compose -f ${MOVENSYS_ROS_VERSION}.yaml -f movensys_manipulator.${CPU_ARCH}.yaml build
+docker compose -f ${MOVENSYS_ROS_VERSION}.yaml -f movensys_manipulator.${CPU_ARCH}.yaml up -d
 ```
 
 # 3. Checking Docker
