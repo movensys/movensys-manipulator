@@ -42,26 +42,27 @@
     # --- mapping ----------------------------------------------------------
     # Deliberately below the shipped 0.5 until all three axes are confirmed to
     # move the tool the way the operator expects. Raised in phase 8.
-    position_scale: 0.2
+    position_scale: 1.0
     orientation_scale: 0.20        # 0..1; 1.0 = 1:1 hand rotation
 
     # --- operator -> robot frame -----------------------------------------
     # Applied to the position delta AND the orientation delta, as one
     # rotation, so translation and rotation can never disagree.
     #
-    # "z,-x,-y" is the RealSense *optical* frame (x right, y down, z forward)
-    # onto the ROS body frame (x forward, y left, z up), which is the
-    # convention perception/position.py and perception/orientation.py both
-    # work in:
+    # Camera is a RealSense *optical* frame (x right, y down, z forward). The
+    # shipped "z,-x,-y" was the textbook optical->ROS-body map (camera z ->
+    # base +X); on this mount it came out with X and Y swapped: hand toward /
+    # away from the lens drove the arm left / right, and hand left / right
+    # drove it toward / away. Verified live on 2026-09-16 with up/down correct.
+    # "x,z,-y" swaps the two horizontal sources and keeps det = +1:
     #
-    #     hand right      (+x_cam) -> base -Y
+    #     hand right      (+x_cam) -> base +X
+    #     hand from lens  (+z_cam) -> base +Y
     #     hand down       (+y_cam) -> base -Z
-    #     hand from lens  (+z_cam) -> base +X
     #
-    # Determinant is +1, which matters: the node rejects a mirror outright,
-    # because a mirror cannot be applied to an orientation. The shipped
-    # "y,-x,z" is a 90-degree yaw and is Quest-specific -- it is not this.
-    quest_axis_map: "z,-x,-y"
+    # If both horizontal axes are correct but inverted, use "-x,-z,-y" (also a
+    # proper rotation). A mirror such as "-x,z,-y" is rejected by the node.
+    quest_axis_map: "x,z,-y"
 
     # Extra roll/pitch/yaw [deg] about the robot base axes, applied after the
     # map. This is the whole of the hand-eye calibration: the clutch is purely
@@ -138,7 +139,7 @@
     #   tool - the EEF axes *as anchored at clutch engage*, for approach-axis
     #          work like insertion. Not the live tool frame: that would rotate
     #          the constraint surface out from under the operator.
-    mask_frame: base
+    mask_frame: tool
 
     # Used only when motion_mode is "custom". Entries must be >= 0.
     custom_dof_gain: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
