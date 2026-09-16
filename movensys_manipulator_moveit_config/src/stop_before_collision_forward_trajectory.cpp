@@ -90,9 +90,10 @@ public:
     const auto & target_state = local_trajectory.getWayPoint(local_trajectory.getWayPointCount() - 1);
     const double local_duration =
       local_trajectory.getWayPointDurationFromStart(local_trajectory.getWayPointCount() - 1);
+    const bool is_start_point_trajectory = local_duration >= kStartPointTrajectoryMinDuration;
     local_solution.joint_names = joint_group_->getActiveJointModelNames();
 
-    if (stop_before_collision_ && isStateColliding(target_state)) {
+    if (!is_start_point_trajectory && stop_before_collision_ && isStateColliding(target_state)) {
       hold_empty_until_new_trajectory_ = true;
       if (!path_invalidation_event_sent_) {
         feedback_.feedback = std::string(moveit::hybrid_planning::toString(
@@ -129,7 +130,7 @@ public:
     moveit_msgs::msg::RobotTrajectory robot_trajectory_msg;
     local_trajectory.getRobotTrajectoryMsg(robot_trajectory_msg);
     local_solution = robot_trajectory_msg.joint_trajectory;
-    local_solution.header.frame_id = local_duration >= kStartPointTrajectoryMinDuration ?
+    local_solution.header.frame_id = is_start_point_trajectory ?
       kStartPointTrajectoryFrame : kReproducedTrajectoryFrame;
 
     if (local_solution.joint_names.empty()) {

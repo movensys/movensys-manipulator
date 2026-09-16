@@ -12,15 +12,15 @@ from launch_ros.actions import Node
 def generate_launch_description():
     use_sim_time = LaunchConfiguration("use_sim_time")
     camera_tf_arg_defaults = {
-        "camera_0_x": "-0.432",
+        "camera_0_x": "-0.402",
         "camera_0_y": "-0.149",
-        "camera_0_z": "0.967",
+        "camera_0_z": "0.947",
         "camera_0_roll": "-0.076",
         "camera_0_pitch": "1.017",
         "camera_0_yaw": "0.696",
-        "camera_1_x": "0.377",
+        "camera_1_x": "0.417",
         "camera_1_y": "-0.255",
-        "camera_1_z": "0.909",
+        "camera_1_z": "0.879",
         "camera_1_roll": "0.074",
         "camera_1_pitch": "0.867",
         "camera_1_yaw": "2.402",
