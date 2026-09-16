@@ -62,7 +62,7 @@
     #
     # If both horizontal axes are correct but inverted, use "-x,-z,-y" (also a
     # proper rotation). A mirror such as "-x,z,-y" is rejected by the node.
-    quest_axis_map: "x,z,-y"
+    quest_axis_map: "-x,-z,-y"
 
     # Extra roll/pitch/yaw [deg] about the robot base axes, applied after the
     # map. This is the whole of the hand-eye calibration: the clutch is purely
