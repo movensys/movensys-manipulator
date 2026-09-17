@@ -54,14 +54,17 @@
     # base +X); on this mount it came out with X and Y swapped: hand toward /
     # away from the lens drove the arm left / right, and hand left / right
     # drove it toward / away. Verified live on 2026-09-16 with up/down correct.
-    # "x,z,-y" swaps the two horizontal sources and keeps det = +1:
+    # "-x,-z,-y" swaps the two horizontal sources, inverts both (the operator
+    # faces the robot across the table) and keeps det = +1:
     #
-    #     hand right      (+x_cam) -> base +X
-    #     hand from lens  (+z_cam) -> base +Y
+    #     hand right      (+x_cam) -> base -X
+    #     hand from lens  (+z_cam) -> base -Y
     #     hand down       (+y_cam) -> base -Z
     #
-    # If both horizontal axes are correct but inverted, use "-x,-z,-y" (also a
-    # proper rotation). A mirror such as "-x,z,-y" is rejected by the node.
+    # Orientation uses the same rotation, so a hand twist about camera x, y, z
+    # comes out about base -X, -Z, -Y respectively. "x,z,-y" is the same
+    # permutation for an operator standing behind the base. A mirror such as
+    # "-x,z,-y" is rejected by the node.
     quest_axis_map: "-x,-z,-y"
 
     # Extra roll/pitch/yaw [deg] about the robot base axes, applied after the
