@@ -179,6 +179,8 @@ def launch_setup(context: LaunchContext, *args, **kwargs) -> List[Node]:
                 'publish_curobo_world_as_voxels': False,
                 'publish_voxel_size': 0.02,
                 'max_publish_voxels': 50000,
+                'grid_center_m': [0.0, 0.0, 0.35],
+                'grid_size_m': [1.1, 0.9, 0.8],
             }
         ]
     )
@@ -237,6 +239,25 @@ def launch_setup(context: LaunchContext, *args, **kwargs) -> List[Node]:
         ],
     )
 
+    hybrid_planning_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([
+                FindPackageShare('movensys_manipulator_moveit_config'),
+                'launch',
+                'hybrid_planning.launch.py',
+            ])
+        ),
+        launch_arguments={
+            'moveit_config_dump': yaml.dump(moveit_config.to_dict()),
+            'group_name': 'movensys_manipulator_arm',
+            'global_planning_pipeline': 'isaac_ros_cumotion',
+            'local_solution_topic': LaunchConfiguration('hybrid_local_solution_topic'),
+            'local_solution_topic_type': 'trajectory_msgs/JointTrajectory',
+            'use_sim_time': use_sim_time,
+        }.items(),
+        condition=IfCondition(LaunchConfiguration('enable_hybrid_planning')),
+    )
+
     nodes = [
         robot_state_publisher,
         move_group_node,
@@ -244,6 +265,7 @@ def launch_setup(context: LaunchContext, *args, **kwargs) -> List[Node]:
         rviz_node,
         moveit2_api_launch,
         servo_container,
+        hybrid_planning_launch,
     ]
 
     if static_planning_scene_server is not None:
@@ -278,6 +300,16 @@ def generate_launch_description():
             default_value='true',
             description='Start robot_state_publisher here (set false to defer to a '
                         'backend launch that publishes /robot_description)'
+        ),
+        DeclareLaunchArgument(
+            'enable_hybrid_planning',
+            default_value='false',
+            description='Start MoveIt Hybrid Planning components'
+        ),
+        DeclareLaunchArgument(
+            'hybrid_local_solution_topic',
+            default_value='/joint_trajectory',
+            description='JointTrajectory topic published by the hybrid local planner'
         ),
     ]
 

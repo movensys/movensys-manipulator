@@ -1,4 +1,4 @@
-# Nvblox Obstacle Avoidance
+# Nvblox Obstacle Avoidance (Simulation)
 ## Execution Procedure
 
 ### Step 1: Open Isaac Sim

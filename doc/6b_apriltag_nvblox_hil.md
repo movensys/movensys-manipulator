@@ -1,4 +1,4 @@
-# AprilTag + Nvblox Obstacle Avoidance
+# AprilTag + Nvblox Obstacle Avoidance (HIL)
 ## Execution Procedure
 
 ### Step 1: Open Isaac Sim

@@ -13,9 +13,9 @@ engine with a planning and perception stack on top of either Gazebo or
 [NVIDIA Isaac Sim](https://github.com/movensys/movensys-simulation). It
 supports three execution modes for every example:
 
-- **Simulation** — pure simulation (Isaac Sim or Gazebo), no hardware
-- **SIL** — simulation-in-the-loop, simulator visuals + real WMX runtime
-- **Real** — control of the real robot via WMX over EtherCAT
+- **Simulation**: pure simulation (Isaac Sim or Gazebo), no hardware
+- **HIL**: hardware-in-the-loop, simulator visuals with the real WMX runtime
+- **Real**: control of the real robot via WMX over EtherCAT
 
 The included examples cover trajectory planning (MoveIt 2 OMPL or Isaac
 cuMotion), AprilTag-driven pick-and-place, Nvblox obstacle avoidance, YOLO
@@ -28,7 +28,7 @@ object detection, and AprilTag with Nvblox combined.
 ├── movensys_manipulator_description/      # URDF, meshes, Gazebo & RViz launch
 ├── movensys_manipulator_moveit_config/    # MoveIt 2 config, sim bridge, services
 ├── movensys_manipulator_isaac_ros_config/ # Isaac cuMotion + Isaac ROS launch
-├── movensys_manipulator_perception/       # Nvblox, YOLO, AprilTag pipelines
+├── movensys_manipulator_perception/       # Camera bring-up, YOLO, AprilTag detectors
 ├── docker/                                # Compose stacks and Dockerfiles
 ├── doc/                                   # Step-by-step example walkthroughs
 └── tools/                                 # Data collection and training utilities
@@ -39,7 +39,7 @@ object detection, and AprilTag with Nvblox combined.
 | Package | Description |
 |---------|-------------|
 | `movensys_manipulator_description`      | URDF/xacro, meshes, and RViz/Gazebo bring-up for the Dobot CR3A/CR5A arms |
-| `movensys_manipulator_moveit_config`    | MoveIt 2 configuration, the `moveit2_api` service node (`/wmx/moveit2/*`), the simulator bridge, and the demo launches (trajectory, AprilTag pick-and-place, obstacle avoidance, YOLO) |
+| `movensys_manipulator_moveit_config`    | MoveIt 2 configuration, the `moveit2_api` service node (`/wmx/moveit2/*`), the simulator bridge, and the demo launches (trajectory, AprilTag pick-and-place, obstacle avoidance, YOLO, coverage pose, Quest VR teleop) |
 | `movensys_manipulator_isaac_ros_config` | NVIDIA Isaac ROS launches — Isaac cuMotion planning plus Isaac AprilTag and Nvblox perception bridges |
 | `movensys_manipulator_perception`       | Perception nodes: AprilTag detection and YOLO OBB cube/dice detectors, with camera bring-up |
 
@@ -50,20 +50,28 @@ over EtherCAT; see that repository for the underlying motion-control nodes.
 ## Examples
 
 Each example has a dedicated walkthrough under [`doc/`](doc/). The numbered
-prefix selects the scenario; the trailing letter selects the execution mode.
+prefix selects the scenario; the trailing letter selects the execution mode. The
+numbers match the Isaac Sim scene names in
+[`movensys-simulation`](https://github.com/movensys/movensys-simulation).
 
-| #  | Scenario                          | Simulation                                            | SIL                                            | Real                                            |
+| #  | Scenario                          | Simulation                                            | HIL                                            | Real                                            |
 |----|-----------------------------------|-------------------------------------------------------|------------------------------------------------|-------------------------------------------------|
 | 3  | Trajectory planning               | [3a](doc/3a_trajectory_simulation.md)                 | [3b](doc/3b_trajectory_hil.md)                 | [3c](doc/3c_trajectory_real.md)                 |
 | 4  | AprilTag pick-and-place           | [4a](doc/4a_apriltag_simulation.md)                   | [4b](doc/4b_apriltag_hil.md)                   | [4c](doc/4c_apriltag_real.md)                   |
 | 5  | Nvblox obstacle avoidance         | [5a](doc/5a_nvblox_simulation.md)                     | [5b](doc/5b_nvblox_hil.md)                     | [5c](doc/5c_nvblox_real.md)                     |
-| 6  | YOLO pick-and-place               | [6a](doc/6a_yolo_simulation.md)                       | [6b](doc/6b_yolo_hil.md)                       | [6c](doc/6c_yolo_real.md)                       |
-| 7  | AprilTag + Nvblox                 | [7a](doc/7a_apriltag_nvblox_simulation.md)            | [7b](doc/7b_apriltag_nvblox_hil.md)            | [7c](doc/7c_apriltag_nvblox_real.md)            |
-| 8  | VLA application (RoboPoly)        | [1a](https://github.com/movensys/movensys-intelligence/blob/main/movensys_sample/doc/1a_robopoly_simulation.md) | —                | [1c](https://github.com/movensys/movensys-intelligence/blob/main/movensys_sample/doc/1c_robopoly_real.md) |
+| 6  | AprilTag + Nvblox                 | [6a](doc/6a_apriltag_nvblox_simulation.md)            | [6b](doc/6b_apriltag_nvblox_hil.md)            | [6c](doc/6c_apriltag_nvblox_real.md)            |
+| 7  | VLA application (RoboPoly)        | [1a](https://github.com/movensys/movensys-intelligence/blob/main/movensys_sample/doc/1a_robopoly_simulation.md) | n/a              | [1c](https://github.com/movensys/movensys-intelligence/blob/main/movensys_sample/doc/1c_robopoly_real.md) |
+| 8  | YOLO pick-and-place               | [8a](doc/8a_yolo_simulation.md)                       | [8b](doc/8b_yolo_hil.md)                       | [8c](doc/8c_yolo_real.md)                       |
 
-A ROS 2 API example (`doc/3d_api_example.md`) and host-setup guides
-(`doc/1_setup.md`, `doc/2_docker.md`) are also provided. RGB recording and
-video conversion commands are in [`doc/8_recording.md`](doc/8_recording.md).
+Also provided:
+
+- A ROS 2 API example, [`doc/3d_api_example.md`](doc/3d_api_example.md)
+- Meta Quest VR teleoperation through MoveIt Servo,
+  [`doc/quest_servo_teleop.md`](doc/quest_servo_teleop.md)
+- RGB recording and video conversion,
+  [`doc/9_recording.md`](doc/9_recording.md)
+- Host-setup guides, [`doc/1_setup.md`](doc/1_setup.md) and
+  [`doc/2_docker.md`](doc/2_docker.md)
 
 ## Requirements
 

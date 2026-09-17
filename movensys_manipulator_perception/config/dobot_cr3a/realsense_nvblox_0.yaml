@@ -1,0 +1,34 @@
+/**:
+  ros__parameters:
+    device_type: ''
+    serial_no: '324422300745'
+    usb_port_id: ''
+
+    enable_accel: false
+    enable_color: true
+    enable_depth: true
+    enable_gyro: false
+    enable_infra1: false
+    enable_infra2: false
+    global_time_enabled: true
+
+    rgb_camera:
+      profile: '640x480x15'
+    color_qos: "SYSTEM_DEFAULT"
+
+    depth_module:
+      profile: '640x480x15'
+      emitter_enabled: 0
+      emitter_on_off: false
+    depth_qos: "SYSTEM_DEFAULT"
+    depth_info_qos: "SYSTEM_DEFAULT"
+
+    align_depth.enable: true
+
+    camera_resolution:
+      width: 640
+      height: 480
+    camera_name: 'camera_nvblox_0'
+    focal_length:
+      f_x: 380.0
+      f_y: 380.0

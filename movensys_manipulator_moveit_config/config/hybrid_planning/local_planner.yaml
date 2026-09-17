@@ -1,0 +1,27 @@
+robot_description: "robot_description"
+trajectory_operator_plugin_name: "movensys_manipulator_moveit_config/TimeIndexedSampler"
+local_constraint_solver_plugin_name: "movensys_manipulator_moveit_config/StopBeforeCollisionForwardTrajectory"
+local_planning_frequency: 10.0
+global_solution_topic: "global_trajectory"
+local_solution_topic: "/joint_trajectory"
+local_solution_topic_type: "trajectory_msgs/JointTrajectory"
+publish_joint_positions: true
+publish_joint_velocities: false
+group_name: "movensys_manipulator_arm"
+monitored_planning_scene: "/planning_scene"
+collision_object_topic: "/collision_object"
+joint_states_topic: "/joint_states"
+
+stop_before_collision: true
+
+time_indexed_sampler:
+  lookahead_time: 0.1
+  output_dt: 0.1
+  goal_reached_tolerance: 0.001
+  first_point_blend_duration: 0.5
+  start_point_trajectory_publish_count: 20
+  debug_no_store_reference_trajectory: false
+
+stop_before_collision_forward_trajectory:
+  max_stuck_iterations: 100
+  stuck_position_tolerance: 0.000001

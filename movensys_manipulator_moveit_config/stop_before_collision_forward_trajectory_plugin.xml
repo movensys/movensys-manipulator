@@ -1,0 +1,10 @@
+<library path="movensys_stop_before_collision_forward_trajectory">
+  <class
+    name="movensys_manipulator_moveit_config/StopBeforeCollisionForwardTrajectory"
+    type="movensys_manipulator_moveit_config::StopBeforeCollisionForwardTrajectory"
+    base_class_type="moveit::hybrid_planning::LocalConstraintSolverInterface">
+    <description>
+      Forward local constraint solver that publishes an empty JointTrajectory when collision is detected.
+    </description>
+  </class>
+</library>

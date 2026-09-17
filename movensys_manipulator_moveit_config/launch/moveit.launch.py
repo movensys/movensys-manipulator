@@ -53,6 +53,22 @@ def generate_launch_description():
         )
     )
 
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "enable_hybrid_planning",
+            default_value="false",
+            description="Start MoveIt Hybrid Planning components",
+        )
+    )
+
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "hybrid_local_solution_topic",
+            default_value="/joint_trajectory",
+            description="JointTrajectory topic published by the hybrid local planner",
+        )
+    )
+
     return LaunchDescription(
         declared_arguments + [OpaqueFunction(function=launch_setup)]
     )
@@ -168,10 +184,30 @@ def launch_setup(context, *args, **kwargs):
         ],
     )
 
+    hybrid_planning_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([
+                FindPackageShare("movensys_manipulator_moveit_config"),
+                "launch",
+                "hybrid_planning.launch.py",
+            ])
+        ),
+        launch_arguments={
+            "moveit_config_dump": yaml.dump(moveit_config.to_dict()),
+            "group_name": "movensys_manipulator_arm",
+            "global_planning_pipeline": "ompl",
+            "local_solution_topic": LaunchConfiguration("hybrid_local_solution_topic"),
+            "local_solution_topic_type": "trajectory_msgs/JointTrajectory",
+            "use_sim_time": use_sim_time,
+        }.items(),
+        condition=IfCondition(LaunchConfiguration("enable_hybrid_planning")),
+    )
+
     return [
         rviz_node,
         robot_state_publisher,
         run_move_group_node,
         moveit2_api_launch,
         servo_container,
+        hybrid_planning_launch,
     ]

@@ -7,20 +7,24 @@ robot_segmenter_node:
     robot: ""
     urdf_path: ""
 
-    num_cameras: 1
+    num_cameras: 2
 
     # Input topics
     depth_image_topics:
-      - /image_nvblox/depth
+      - /image_nvblox_0/depth
+      - /image_nvblox_1/depth
     depth_camera_infos:
-      - /image_nvblox/camera_info
+      - /image_nvblox_0/camera_info
+      - /image_nvblox_1/camera_info
 
     # Output topics
     # Actual published topics match configured names (no _ros suffix added)
     robot_mask_publish_topics:
-      - /robot_segmenter/robot_mask
+      - /robot_segmenter/robot_mask_0
+      - /robot_segmenter/robot_mask_1
     world_depth_publish_topics:
-      - /robot_segmenter/world_depth
+      - /robot_segmenter/world_depth_0
+      - /robot_segmenter/world_depth_1
 
     joint_states_topic: /joint_states
 

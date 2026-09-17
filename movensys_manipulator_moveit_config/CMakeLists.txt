@@ -24,14 +24,27 @@ find_package(trajectory_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
+find_package(moveit_core REQUIRED)
+find_package(moveit_hybrid_planning REQUIRED)
 find_package(moveit_ros_planning_interface REQUIRED)
 find_package(moveit_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(pluginlib REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_msgs REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
+find_package(octomap REQUIRED)
+find_package(octomap_msgs REQUIRED)
+find_package(nvblox_msgs QUIET)
 find_package(Eigen3 REQUIRED)
+find_package(tl_expected REQUIRED)
+find_package(Boost REQUIRED COMPONENTS random)
+if(NOT TARGET tl::expected AND TARGET tl_expected::tl_expected)
+  add_library(tl::expected INTERFACE IMPORTED)
+  set_target_properties(tl::expected PROPERTIES
+    INTERFACE_LINK_LIBRARIES tl_expected::tl_expected)
+endif()
 
 # MoveIt Servo's ServoCommandType service only exists on Jazzy and newer; it is
 # absent on Humble. Guard the servo teleop executables so the package still
@@ -57,6 +70,45 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/MovePose.srv"
   "srv/MoveJoints.srv"
   "srv/GetEefPose.srv"
+)
+
+add_library(movensys_time_indexed_sampler SHARED
+  src/time_indexed_sampler.cpp
+)
+target_include_directories(movensys_time_indexed_sampler PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+ament_target_dependencies(movensys_time_indexed_sampler
+  moveit_core
+  moveit_hybrid_planning
+  moveit_msgs
+  pluginlib
+  rclcpp
+)
+pluginlib_export_plugin_description_file(
+  moveit_hybrid_planning
+  time_indexed_sampler_plugin.xml
+)
+
+add_library(movensys_stop_before_collision_forward_trajectory SHARED
+  src/stop_before_collision_forward_trajectory.cpp
+)
+target_include_directories(movensys_stop_before_collision_forward_trajectory PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+ament_target_dependencies(movensys_stop_before_collision_forward_trajectory
+  moveit_core
+  moveit_hybrid_planning
+  moveit_msgs
+  pluginlib
+  rclcpp
+  trajectory_msgs
+)
+pluginlib_export_plugin_description_file(
+  moveit_hybrid_planning
+  stop_before_collision_forward_trajectory_plugin.xml
 )
 
 # MoveIt2 Client Library
@@ -86,13 +138,47 @@ install(DIRECTORY
   DESTINATION share/${PROJECT_NAME}/
 )
 
+install(FILES
+  time_indexed_sampler_plugin.xml
+  stop_before_collision_forward_trajectory_plugin.xml
+  DESTINATION share/${PROJECT_NAME}/
+)
+
 install(DIRECTORY include/
   DESTINATION include
+)
+
+install(TARGETS
+  movensys_time_indexed_sampler
+  movensys_stop_before_collision_forward_trajectory
+  moveit2_client_lib
+  EXPORT ${PROJECT_NAME}Targets
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
 )
 
 # Drives both Isaac Sim and Gazebo from one node; sim_bridge.launch.py uses this.
 add_executable(sim_bridge src/sim_bridge.cpp)
 ament_target_dependencies(sim_bridge rclcpp rclcpp_action control_msgs trajectory_msgs sensor_msgs std_msgs std_srvs)
+
+if(nvblox_msgs_FOUND)
+  add_executable(nvblox_esdf_to_planning_scene src/nvblox_esdf_to_planning_scene.cpp)
+  target_include_directories(nvblox_esdf_to_planning_scene PRIVATE ${OCTOMAP_INCLUDE_DIRS})
+  target_link_libraries(nvblox_esdf_to_planning_scene ${OCTOMAP_LIBRARIES})
+  ament_target_dependencies(nvblox_esdf_to_planning_scene
+    moveit_msgs
+    nvblox_msgs
+    octomap_msgs
+    rclcpp
+  )
+  install(TARGETS
+    nvblox_esdf_to_planning_scene
+    RUNTIME DESTINATION lib/${PROJECT_NAME}
+  )
+else()
+  message(STATUS "nvblox_msgs not found; skipping nvblox_esdf_to_planning_scene")
+endif()
 
 if(HAVE_SERVO_COMMAND_TYPE)
   add_executable(keyboard_teleop src/keyboard_teleop.cpp)
@@ -162,6 +248,14 @@ ament_target_dependencies(moveit2_api
   std_srvs
 )
 
+add_executable(hybrid_pose_alternator src/hybrid_pose_alternator.cpp)
+ament_target_dependencies(hybrid_pose_alternator
+  rclcpp
+  rclcpp_action
+  moveit_msgs
+  sensor_msgs
+)
+
 rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
 target_link_libraries(moveit2_api ${cpp_typesupport_target})
 
@@ -171,6 +265,7 @@ install(TARGETS
   obstacle_avoidance_cpp
   apriltag_pick_and_place
   moveit2_api
+  hybrid_pose_alternator
   yolo_pick_and_place_cpp
   DESTINATION lib/${PROJECT_NAME}
 )
@@ -183,7 +278,7 @@ if(HAVE_SERVO_COMMAND_TYPE)
   )
 endif()
 
-install(TARGETS moveit2_client_lib sim_bridge
+install(TARGETS moveit2_client_lib sim_bridge movensys_time_indexed_sampler
   EXPORT export_moveit2_client_lib
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
@@ -194,9 +289,12 @@ ament_export_targets(export_moveit2_client_lib HAS_LIBRARY_TARGET)
 ament_export_dependencies(
   rclcpp
   std_srvs
+  moveit_core
+  moveit_hybrid_planning
   moveit_ros_planning_interface
   moveit_msgs
   geometry_msgs
+  pluginlib
   tf2_ros
   tf2_msgs
   tf2_geometry_msgs

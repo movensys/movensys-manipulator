@@ -48,15 +48,20 @@ def generate_launch_description():
         package='nvblox_ros',
         plugin='nvblox::NvbloxNode',
         remappings=[
-            ('/camera_0/color/image', '/image_nvblox/rgb'),
-            ('/camera_0/color/camera_info', '/image_nvblox/camera_info'),
-            ('/camera_0/depth/image', '/robot_segmenter/world_depth'),
-            ('/camera_0/depth/camera_info', '/image_nvblox/camera_info'),
+            ('/camera_0/color/image', '/image_nvblox_0/rgb'),
+            ('/camera_0/color/camera_info', '/image_nvblox_0/camera_info'),
+            ('/camera_0/depth/image', '/robot_segmenter/world_depth_0'),
+            ('/camera_0/depth/camera_info', '/image_nvblox_0/camera_info'),
+
+            ('/camera_1/color/image', '/image_nvblox_1/rgb'),
+            ('/camera_1/color/camera_info', '/image_nvblox_1/camera_info'),
+            ('/camera_1/depth/image', '/robot_segmenter/world_depth_1'),
+            ('/camera_1/depth/camera_info', '/image_nvblox_1/camera_info'),
         ],
         parameters=[
             nvblox_base_config,
             workspace_config,
-            {'num_cameras': 1},
+            {'num_cameras': 2},
             {'use_sim_time': use_sim_time},
         ]
     )

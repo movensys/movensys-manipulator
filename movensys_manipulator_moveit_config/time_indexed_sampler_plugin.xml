@@ -1,0 +1,11 @@
+<library path="movensys_time_indexed_sampler">
+  <class
+    name="movensys_manipulator_moveit_config/TimeIndexedSampler"
+    type="movensys_manipulator_moveit_config::TimeIndexedSampler"
+    base_class_type="moveit::hybrid_planning::TrajectoryOperatorInterface">
+    <description>
+      Time-indexed trajectory operator plugin for MoveIt Hybrid Planning.
+      It samples the global reference trajectory by elapsed time plus a configurable lookahead.
+    </description>
+  </class>
+</library>

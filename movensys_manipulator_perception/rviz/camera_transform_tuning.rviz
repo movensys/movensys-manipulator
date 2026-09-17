@@ -162,7 +162,7 @@ Visualization Manager:
           Value: false
         bracket:
           Value: false
-        camera_nvblox_link:
+        camera_nvblox_1_link:
           Value: true
         gripper:
           Value: false
@@ -183,7 +183,7 @@ Visualization Manager:
       Show Names: false
       Tree:
         world_manipulator:
-          camera_nvblox_link:
+          camera_nvblox_1_link:
             {}
           table:
             stand:
@@ -212,15 +212,15 @@ Visualization Manager:
         Min Value: -10
         Value: true
       Axis: Z
-      CameraInfo Topic: /image_nvblox/camera_info
+      CameraInfo Topic: /image_nvblox_1/camera_info
       Channel Name: intensity
       Class: rviz_default_plugins/DepthCloud
       Color: 255; 255; 255
-      Color Image Topic: /image_nvblox/rgb
+      Color Image Topic: /image_nvblox_1/rgb
       Color Transformer: RGB8
       Color Transport Hint: raw
       Decay Time: 0
-      Depth Map Topic: /image_nvblox/depth
+      Depth Map Topic: /image_nvblox_1/depth
       Depth Map Transport Hint: raw
       Enabled: true
       Invert Rainbow: false

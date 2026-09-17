@@ -1,4 +1,4 @@
-# Trajectory Planning 
+# Trajectory Planning (Real)
 ## Execution Procedure
 
 ### Step 1a: Open Isaac Sim

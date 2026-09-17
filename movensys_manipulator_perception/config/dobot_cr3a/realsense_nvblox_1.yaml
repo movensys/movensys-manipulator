@@ -1,7 +1,7 @@
 /**:
   ros__parameters:
     device_type: ''
-    serial_no: '234222302502'
+    serial_no: '050222071275'
     usb_port_id: ''
 
     enable_accel: false
@@ -10,6 +10,7 @@
     enable_gyro: false
     enable_infra1: false
     enable_infra2: false
+    global_time_enabled: true
 
     rgb_camera:
       profile: '640x480x15'
@@ -27,7 +28,7 @@
     camera_resolution:
       width: 640
       height: 480
-    camera_name: 'camera_nvblox'
+    camera_name: 'camera_nvblox_1' 
     focal_length:
       f_x: 380.0
       f_y: 380.0

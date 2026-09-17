@@ -45,6 +45,7 @@ RUN chmod +x /tmp/fix_robot_segmenter.sh && /tmp/fix_robot_segmenter.sh && rm /t
 RUN apt-get update && apt-get install -y \
         ros-jazzy-rclcpp-action \
         ros-jazzy-moveit-ros \
+        ros-jazzy-moveit-hybrid-planning \
         ros-jazzy-moveit-planners \
         ros-jazzy-moveit-plugins \
         ros-jazzy-moveit-setup-assistant \
