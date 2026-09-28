@@ -7,6 +7,12 @@ services:
       - XAUTHORITY=/run/user/1000/gdm/Xauthority
     volumes:
       - /run/user/1000/gdm:/run/user/1000/gdm:ro
-    gpus: all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     group_add:
       - "0"   # root group — nvidia-container-toolkit ≥1.18 mounts Jetson GPU devices as root:root (not root:video)

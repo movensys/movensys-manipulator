@@ -2,6 +2,7 @@ ARG ARCH=amd64
 FROM isaac_ros_dev-x86_64 AS base-amd64
 FROM isaac_ros_dev-aarch64 AS base-arm64
 FROM base-${ARCH}
+ARG ROS_DISTRO=humble
 
 USER root
 WORKDIR /workspaces

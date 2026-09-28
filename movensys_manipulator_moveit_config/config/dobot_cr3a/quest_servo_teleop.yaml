@@ -21,7 +21,68 @@ quest_servo_teleop:
 
     # --- mapping ---
     position_scale: 0.5            # controller metres -> robot metres (start conservative)
-    orientation_scale: 1.0         # 0..1; 1.0 = 1:1 hand rotation
-    align_yaw_deg: 0.0             # rotate operator "forward" onto robot +X (calibrate)
+    orientation_scale: 0.20         # 0..1; 1.0 = 1:1 hand rotation
+
+    # --- operator -> robot frame -----------------------------------------
+    # Applied to the position delta AND the orientation delta, as one rotation,
+    # so translation and rotation can never disagree.
+    #
+    # quest_axis_map: signed permutation "<x-src>,<y-src>,<z-src>" mapping the
+    # Quest (ROS-convention) axes onto the robot base axes, e.g. "x,y,z" (none),
+    # "y,-x,z" (90 deg about +Z), "-y,x,z" (-90 deg). It must be a proper
+    # rotation: a plain swap like "y,x,z" mirrors the frame (det = -1) and is
+    # rejected, because a mirror cannot be applied to an orientation.
+    quest_axis_map: "y,-x,z"
+
+    # Extra roll/pitch/yaw [deg] about the robot base axes, applied after the
+    # map. Yaw rotates operator "forward" onto robot +X; calibrate this first.
+    align_rpy_deg: [0.0, 0.0, 0.0]
+
+    # Extra rotation applied to the ORIENTATION delta only, on top of the two
+    # above (same "<x-src>,<y-src>,<z-src>" / [roll, pitch, yaw] forms). Leave
+    # these at identity unless translation is already correct and only the wrist
+    # axes are wrong -- e.g. hand roll turns the tool in yaw. A rotation about
+    # hand axis a then comes out about robot axis  quest_axis_map * (this * a).
+    rotation_axis_map: "x,y,z"
+    rotation_rpy_deg: [0.0, 0.0, 0.0]
+
+    # Log, at 2 Hz while the clutch is held, which hand axis drove which robot
+    # axis. Move/twist about one axis at a time and read the mapping off.
+    debug_axes: false
     max_target_step: 0.05          # max target jump per publish [m] (glitch guard)
     stream_rate_hz: 50.0
+
+    # --- DOF modes -------------------------------------------------------
+    # The clutch delta is multiplied by a per-axis gain [tx,ty,tz,rx,ry,rz]
+    # before it is applied to the anchor: 0 pins that axis at its anchored
+    # value, 1 follows the hand 1:1, values between damp it. Presets:
+    #   full         1 1 1 | 1 1 1   6-DOF (default)
+    #   translation  1 1 1 | 0 0 0   position only, orientation held
+    #   rotation     0 0 0 | 1 1 1   orientation only, position held
+    #   planar       1 1 0 | 0 0 1   tabletop: XY + yaw
+    #   vertical     0 0 1 | 0 0 0   straight up/down
+    #   yaw          0 0 0 | 0 0 1   spin about the mask-frame Z only
+    #   pitch        0 0 0 | 0 1 0
+    #   roll         0 0 0 | 1 0 0
+    #   custom       from custom_dof_gain below
+    # Switch at runtime with:
+    #   ros2 param set /quest_servo_teleop motion_mode translation
+    # Every switch re-anchors the clutch, so the arm does not jump.
+    motion_mode: full
+
+    # Axes the mask is expressed in:
+    #   base - the robot base frame (rz = yaw, ry = pitch, rx = roll about it)
+    #   tool - the EEF axes *as anchored at clutch engage*, for approach-axis
+    #          work like insertion. Not the live tool frame: that would rotate
+    #          the constraint surface out from under the operator.
+    mask_frame: base
+
+    # Used only when motion_mode is "custom". Entries must be >= 0.
+    custom_dof_gain: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+
+    # --- in-headset mode switching ---------------------------------------
+    # Index into Joy.buttons = [primary, secondary, thumbstick, menu];
+    # -1 disables it, which is the default so the face buttons stay free for
+    # the gripper. A rising edge steps through mode_cycle_list.
+    mode_cycle_button: -1
+    mode_cycle_list: ["full", "translation", "planar", "yaw"]
