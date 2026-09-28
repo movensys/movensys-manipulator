@@ -425,7 +425,8 @@ private:
         for (const auto& name : mode_cycle_list_) {
             if (name != kCustomMode && !lookupPreset(name, unused)) {
                 RCLCPP_WARN(node_->get_logger(),
-                            "mode_cycle_list entry '%s' is not a known mode; cycling to it will fail.",
+                            "mode_cycle_list entry '%s' is not a known mode; "
+                            "cycling to it will fail.",
                             name.c_str());
             }
         }

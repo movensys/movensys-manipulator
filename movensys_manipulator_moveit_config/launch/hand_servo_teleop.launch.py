@@ -9,7 +9,7 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     """
-    MediaPipe hand -> MoveIt Servo POSE teleop (relative clutch).
+    Launch MediaPipe hand -> MoveIt Servo POSE teleop (relative clutch).
 
     Same executable as quest_servo_teleop.launch.py; only the pose source and
     the operator->robot frame differ, and both are parameters. See
