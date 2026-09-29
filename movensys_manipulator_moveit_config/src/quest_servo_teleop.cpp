@@ -55,7 +55,10 @@
 // values in between damp it. Because the target is rebuilt from the anchor every
 // cycle, a pinned axis needs no extra state -- zeroing its delta *is* holding it.
 // Modes are named presets (see kModePresets), switchable at runtime through the
-// `motion_mode` parameter or a controller button. Every switch re-anchors:
+// `motion_mode` parameter, a controller button, or a gesture axis on the Joy
+// message (`translate_axis_index` / `orient_axis_index`: the hand teleop raises
+// one axis per gesture, pinch = translate, fist = orient, and the mode is picked
+// before the clutch anchors on that same message). Every switch re-anchors:
 // without that, dropping an axis collapses its accumulated delta to zero in a
 // single cycle and steps the target discontinuously.
 //
@@ -253,6 +256,15 @@ public:
         mode_cycle_list_   = declare<std::vector<std::string>>(
             "mode_cycle_list", {"full", "translation", "planar", "yaw"});
         validateCycleList();
+        // Gesture-selected modes: a Joy axis held at or above the enable
+        // threshold picks the mode named for it; -1 disables. The Quest
+        // publishes no such axes, so the defaults leave only the parameter and
+        // button paths, exactly as before.
+        translate_axis_index_ = declare<int>("translate_axis_index", -1);
+        orient_axis_index_    = declare<int>("orient_axis_index", -1);
+        translate_mode_ = declare<std::string>("translate_mode", "translation");
+        orient_mode_    = declare<std::string>("orient_mode", "rotation");
+        validateGestureModes();
 
         if (!updateFrameTransform(axis_map_spec_, align_rpy_deg_, rot_map_spec_, rot_rpy_deg_)) {
             RCLCPP_ERROR(node_->get_logger(),
@@ -432,6 +444,46 @@ private:
         }
     }
 
+    void validateGestureModes() {
+        DofGain unused;
+        for (const std::string* name : {&translate_mode_, &orient_mode_}) {
+            if (*name != kCustomMode && !lookupPreset(*name, unused)) {
+                RCLCPP_WARN(node_->get_logger(),
+                            "gesture mode '%s' is not a known mode; the gesture that "
+                            "selects it will be rejected.",
+                            name->c_str());
+            }
+        }
+    }
+
+    // Map the gesture axes of a Joy message onto motion_mode. Routed through the
+    // parameter, like cycleMode(), so `ros2 param get` stays truthful and the
+    // switch re-anchors if the clutch happens to be held. A no-op while both
+    // axes are disabled or low (hand open), so a manual `ros2 param set` still
+    // holds between gestures.
+    void selectModeFromAxes(const sensor_msgs::msg::Joy& msg) {
+        const auto high = [&](int idx) {
+            return idx >= 0 && static_cast<size_t>(idx) < msg.axes.size() &&
+                   msg.axes[idx] >= enable_axis_threshold_;
+        };
+        const std::string* want = nullptr;
+        if (high(orient_axis_index_)) {
+            want = &orient_mode_;
+        } else if (high(translate_axis_index_)) {
+            want = &translate_mode_;
+        }
+        if (want == nullptr || *want == motion_mode_) {
+            return;
+        }
+        const auto result = node_->set_parameter(rclcpp::Parameter("motion_mode", *want));
+        if (!result.successful) {
+            // Throttled: the axis stays high for the whole gesture.
+            RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 2000,
+                                 "Gesture mode '%s' rejected: %s", want->c_str(),
+                                 result.reason.c_str());
+        }
+    }
+
     // Swap the active gain vector. Re-anchors in the same critical section, so
     // the operator's accumulated delta on a newly-pinned axis is discarded
     // against a fresh anchor instead of stepping the target.
@@ -562,6 +614,16 @@ private:
                 validateCycleList();
             } else if (p.get_name() == "mode_cycle_button") {
                 mode_cycle_button_ = static_cast<int>(p.as_int());
+            } else if (p.get_name() == "translate_axis_index") {
+                translate_axis_index_ = static_cast<int>(p.as_int());
+            } else if (p.get_name() == "orient_axis_index") {
+                orient_axis_index_ = static_cast<int>(p.as_int());
+            } else if (p.get_name() == "translate_mode") {
+                translate_mode_ = p.as_string();
+                validateGestureModes();
+            } else if (p.get_name() == "orient_mode") {
+                orient_mode_ = p.as_string();
+                validateGestureModes();
             } else if (p.get_name() == "debug_axes") {
                 debug_axes_.store(p.as_bool());
             } else if (p.get_name() == "pose_timeout_s") {
@@ -689,6 +751,12 @@ private:
                    static_cast<size_t>(enable_axis_index_) < msg->axes.size()) {
             pressed = msg->axes[enable_axis_index_] >= enable_axis_threshold_;
         }
+
+        // The gesture axes arrive on the same message as the engage edge, so
+        // pick the mode first: engage() then latches under the new gain instead
+        // of anchoring in the old mode and re-anchoring a cycle later.
+        selectModeFromAxes(*msg);
+
         if (pressed && !engaged_.load()) {
             engage();
         } else if (!pressed && engaged_.load()) {
@@ -958,6 +1026,8 @@ private:
     bool mask_frame_tool_{false};
     int mode_cycle_button_{-1};
     bool cycle_prev_{false};
+    int translate_axis_index_{-1}, orient_axis_index_{-1};
+    std::string translate_mode_{"translation"}, orient_mode_{"rotation"};
 
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr target_pub_;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr mode_pub_;

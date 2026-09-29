@@ -39,11 +39,25 @@
     enable_axis_threshold: 0.5
     enable_button_index: -1        # >=0 would override the axis; keep it off
 
+    # --- gesture-selected DOF mode ----------------------------------------
+    # /hand_joy also carries one axis per gesture while engaged:
+    #   axes[1] = 1.0 in TRANSLATE (PINCH), axes[2] = 1.0 in ORIENT (FIST).
+    # A high axis switches motion_mode to the mode named for it, on the same
+    # message that engages the clutch, so a pinch drives position only and a
+    # fist drives orientation only. Both low (hand open) keeps the last mode,
+    # so a manual `ros2 param set motion_mode` still holds between gestures.
+    # -1 disables an axis. Without this block the node reads axes[0] alone and
+    # follows whatever motion_mode says in both gestures.
+    translate_axis_index: 1
+    orient_axis_index: 2
+    translate_mode: translation
+    orient_mode: rotation
+
     # --- mapping ----------------------------------------------------------
     # Deliberately below the shipped 0.5 until all three axes are confirmed to
     # move the tool the way the operator expects. Raised in phase 8.
     position_scale: 1.0
-    orientation_scale: 0.20        # 0..1; 1.0 = 1:1 hand rotation
+    orientation_scale: 0.5        # 0..1; 1.0 = 1:1 hand rotation
 
     # --- operator -> robot frame -----------------------------------------
     # Applied to the position delta AND the orientation delta, as one
@@ -129,12 +143,14 @@
     #   yaw / pitch / roll           one rotation axis only
     #   custom       from custom_dof_gain below
     #
-    # Starts pinned to translation: orientation is the harder half to verify
-    # and a wrong rotation sign is not visible until the tool is already
-    # turning the wrong way. Switch at runtime with
+    # Mode at startup, until the first gesture picks one (see
+    # translate_axis_index / orient_axis_index above). Starts pinned to
+    # translation: orientation is the harder half to verify and a wrong
+    # rotation sign is not visible until the tool is already turning the
+    # wrong way. Can still be forced at runtime with
     #   ros2 param set /hand_servo_teleop motion_mode full
-    # once all three translation axes are confirmed. Every switch re-anchors
-    # the clutch, so the arm does not jump.
+    # and holds until the next pinch or fist. Every switch re-anchors the
+    # clutch, so the arm does not jump.
     motion_mode: translation
 
     # Axes the mask is expressed in:
