@@ -72,7 +72,7 @@
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
-#include <algorithm>
+#include <algorithm>why in the base mode the last joint is rotating when i am only doing pitch and way?
 #include <array>
 #include <atomic>
 #include <cmath>
@@ -98,7 +98,8 @@ constexpr int8_t CMD_POSE = 2;
 // Per-axis gains on the clutch delta: [tx, ty, tz, rx, ry, rz]. 0 pins the axis
 // to its anchored value, 1 follows the hand 1:1. Rotation axis names below are
 // those of the *mask frame* (mask_frame=base: rz=yaw, ry=pitch, rx=roll about
-// the robot base; mask_frame=tool: the same about the anchored tool axes).
+// the robot base; mask_frame=tool: rx/ry swing the anchored tool axis, rz is the
+// twist about it -- a true swing/twist split, see maskSwingTwist).
 using DofGain = std::array<double, 6>;
 
 struct ModePreset {
@@ -110,6 +111,7 @@ constexpr ModePreset kModePresets[] = {
     {"full",        {{1, 1, 1, 1, 1, 1}}},
     {"translation", {{1, 1, 1, 0, 0, 0}}},
     {"rotation",    {{0, 0, 0, 1, 1, 1}}},
+    {"tilt",        {{0, 0, 0, 1, 1, 0}}},  // orientation without twist about mask z
     {"planar",      {{1, 1, 0, 0, 0, 1}}},  // tabletop: XY + yaw
     {"vertical",    {{0, 0, 1, 0, 0, 0}}},
     {"yaw",         {{0, 0, 0, 0, 0, 1}}},
@@ -891,12 +893,29 @@ private:
         return tf2::quatRotate(q_mask, v);
     }
 
+    // Rotation vector (log map) of a unit quaternion with w >= 0, and back.
+    static tf2::Vector3 toRotVec(const tf2::Quaternion& q) {
+        const double angle = q.getAngle();
+        if (angle < 1e-9) {
+            return tf2::Vector3(0.0, 0.0, 0.0);  // getAxis() is arbitrary here
+        }
+        return q.getAxis() * angle;
+    }
+
+    static tf2::Quaternion fromRotVec(const tf2::Vector3& v) {
+        const double angle = v.length();
+        if (angle < 1e-9) {
+            return tf2::Quaternion::getIdentity();
+        }
+        return tf2::Quaternion(v / angle, angle);
+    }
+
     // Per-axis gains cannot be applied to a quaternion directly, so drop into the
     // rotation-vector (log map) representation, scale there, and exponentiate
     // back. This is continuous everywhere, unlike an Euler decomposition, which
-    // would be order-dependent and gimbal-lock at pitch +-90deg. For a uniform
-    // gain it is exactly slerp from identity, which is how orientation_scale_ is
-    // folded in here.
+    // would be order-dependent and gimbal-lock at pitch +-90deg. orientation_scale_
+    // is applied first, uniformly, which is exactly slerp from identity; the
+    // per-axis gains then act on the damped delta in the mask frame.
     tf2::Quaternion maskRotation(tf2::Quaternion dq, const tf2::Quaternion& q_mask) const {
         if (dq.w() < 0.0) {
             // Shortest path: tf2's getAngle() spans [0, 2pi], so a negative-w
@@ -904,20 +923,42 @@ private:
             dq = tf2::Quaternion(-dq.x(), -dq.y(), -dq.z(), -dq.w());
         }
         const tf2::Quaternion dl = q_mask.inverse() * dq * q_mask;
-        const double angle = dl.getAngle();
-        if (angle < 1e-9) {
-            return tf2::Quaternion::getIdentity();  // getAxis() is arbitrary here
+        const tf2::Vector3 v = toRotVec(dl) * orientation_scale_;
+        tf2::Quaternion masked;
+        if (mask_frame_tool_) {
+            masked = maskSwingTwist(fromRotVec(v));
+        } else {
+            masked = fromRotVec(tf2::Vector3(v.x() * gain_[3], v.y() * gain_[4], v.z() * gain_[5]));
         }
-        tf2::Vector3 v = dl.getAxis() * angle;
-        v.setValue(v.x() * gain_[3] * orientation_scale_,
-                   v.y() * gain_[4] * orientation_scale_,
-                   v.z() * gain_[5] * orientation_scale_);
-        const double masked_angle = v.length();
-        if (masked_angle < 1e-9) {
-            return tf2::Quaternion::getIdentity();
-        }
-        const tf2::Quaternion masked(v / masked_angle, masked_angle);
         return q_mask * masked * q_mask.inverse();
+    }
+
+    // Tool-frame mask. Zeroing the z component of the rotation vector does not
+    // remove rotation about the tool axis: a delta with rotation vector
+    // (a, b, 0) still carries a twist about z of second order in a and b, and
+    // the swing-only hand orientation (perception/orientation.py) arrives with
+    // exactly such a twist whenever the clutch was anchored off the lens axis.
+    // So split the delta properly: q = swing * twist, where twist is the
+    // rotation about the anchored tool z and swing is the minimal rotation
+    // carrying that axis where q carries it (axis perpendicular to z). rx/ry
+    // gain the swing's rotation vector, rz gains the signed twist angle, and with
+    // rz = 0 the result is the unique rotation that tilts the tool axis without
+    // turning the tool about it. `q` is in the mask frame with w >= 0.
+    tf2::Quaternion maskSwingTwist(const tf2::Quaternion& q) const {
+        const double n = std::sqrt(q.z() * q.z() + q.w() * q.w());
+        tf2::Quaternion twist = tf2::Quaternion::getIdentity();
+        double twist_angle = 0.0;
+        if (n > 1e-9) {  // n == 0 only for a 180deg swing, which has no twist
+            twist = tf2::Quaternion(0.0, 0.0, q.z() / n, q.w() / n);
+            twist_angle = 2.0 * std::atan2(q.z(), q.w());  // signed, (-pi, pi]
+        }
+        const tf2::Quaternion swing = q * twist.inverse();  // w >= 0, z == 0
+        const tf2::Vector3 s = toRotVec(swing);
+        const tf2::Quaternion swing_g = fromRotVec(tf2::Vector3(s.x() * gain_[3], s.y() * gain_[4], 0.0));
+        const tf2::Quaternion twist_g(tf2::Vector3(0.0, 0.0, 1.0), twist_angle * gain_[5]);
+        tf2::Quaternion out = swing_g * twist_g;
+        out.normalize();
+        return out;
     }
 
     // --- streaming --------------------------------------------------------

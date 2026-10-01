@@ -51,12 +51,16 @@
     translate_axis_index: 1
     orient_axis_index: 2
     translate_mode: translation
-    orient_mode: rotation
+    # tilt, not rotation: the fist tilts the tool axis (rx, ry in the tool
+    # frame) but never twists about it, so joint 6 stays put. Needs
+    # mask_frame: tool below; in the base frame "no rz" is "no base yaw",
+    # which is a twist about the tool whenever the tool points down.
+    orient_mode: tilt
 
     # --- mapping ----------------------------------------------------------
     # Deliberately below the shipped 0.5 until all three axes are confirmed to
     # move the tool the way the operator expects. Raised in phase 8.
-    position_scale: 1.0
+    position_scale: 0.5
     orientation_scale: 0.5        # 0..1; 1.0 = 1:1 hand rotation
 
     # --- operator -> robot frame -----------------------------------------
@@ -90,7 +94,7 @@
     # Zeros here is a starting point, not an answer. Phase 4 walks it live:
     #   ros2 param set /hand_servo_teleop align_rpy_deg "[0.0, 45.0, 180.0]"
     # Both mapping parameters are runtime-settable and re-anchor the clutch on
-    # change, so no rebuild. Start near [0, 45, 180] for a 45-degree overhead
+    # change, so no rebuild. Start near [0, 45, 180] fowhy in the base mode the last joint is rotating when i am only doing pitch and way?r a 45-degree overhead
     # mount facing the operator.
     align_rpy_deg: [0.0, 0.0, 0.0]
 
@@ -111,7 +115,7 @@
     # --- pose watchdog (phase 6) -------------------------------------------
     # The newest /hand_pose must be younger than this -- its header stamp
     # against this node's clock -- or the clutch drops, streaming stops (Servo
-    # then halts on its own 0.1 s incoming_command_timeout) and engage is
+    # then halts on its own 0.1 s incoming_command_timeout) and engage iswhy in the base mode the last joint is rotating when i am only doing pitch and way?
     # refused until a fresh pose arrives. This is the one stop that works when
     # the perception process is dead, frozen, or its camera has stalled: none
     # of those produce a /hand_joy release, and with PUSH disabled and the
@@ -128,7 +132,7 @@
     #
     # Both nodes MUST agree on use_sim_time. If they do not, every pose is
     # ~1.7e9 s stale (or in the future) and the node refuses to engage, saying
-    # so in the log. That is the intended failure: loud, not silent.
+    # so in the log. That is the intended failure: loud, not silent.why in the base mode the last joint is rotating when i am only doing pitch and way?
     pose_timeout_s: 0.15
 
     # --- DOF modes --------------------------------------------------------
@@ -138,18 +142,19 @@
     #   full         1 1 1 | 1 1 1   6-DOF
     #   translation  1 1 1 | 0 0 0   position only, orientation held
     #   rotation     0 0 0 | 1 1 1   orientation only, position held
+    #   tilt         0 0 0 | 1 1 0   orientation without twist about mask z
     #   planar       1 1 0 | 0 0 1   tabletop: XY + yaw
     #   vertical     0 0 1 | 0 0 0   straight up/down
     #   yaw / pitch / roll           one rotation axis only
     #   custom       from custom_dof_gain below
-    #
+    #why in the base mode the last joint is rotating when i am only doing pitch and way?
     # Mode at startup, until the first gesture picks one (see
     # translate_axis_index / orient_axis_index above). Starts pinned to
     # translation: orientation is the harder half to verify and a wrong
     # rotation sign is not visible until the tool is already turning the
     # wrong way. Can still be forced at runtime with
     #   ros2 param set /hand_servo_teleop motion_mode full
-    # and holds until the next pinch or fist. Every switch re-anchors the
+    # and holds until the next pinch or fist. Every switch re-anchors thewhy in the base mode the last joint is rotating when i am only doing pitch and way?
     # clutch, so the arm does not jump.
     motion_mode: translation
 
@@ -157,7 +162,10 @@
     #   base - the robot base frame (rz = yaw, ry = pitch, rx = roll about it)
     #   tool - the EEF axes *as anchored at clutch engage*, for approach-axis
     #          work like insertion. Not the live tool frame: that would rotate
-    #          the constraint surface out from under the operator.
+    #          the constraint surface out from under the operator. In this
+    #          frame rz is a true twist about the tool axis (swing/twist split
+    #          in the node), which is what `tilt` zeroes.
+    # Constructor-only: change it here and relaunch, `ros2 param set` is ignored.
     mask_frame: tool
 
     # Used only when motion_mode is "custom". Entries must be >= 0.
