@@ -72,7 +72,7 @@
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
-#include <algorithm>why in the base mode the last joint is rotating when i am only doing pitch and way?
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cmath>
@@ -954,7 +954,8 @@ private:
         }
         const tf2::Quaternion swing = q * twist.inverse();  // w >= 0, z == 0
         const tf2::Vector3 s = toRotVec(swing);
-        const tf2::Quaternion swing_g = fromRotVec(tf2::Vector3(s.x() * gain_[3], s.y() * gain_[4], 0.0));
+        const tf2::Quaternion swing_g =
+            fromRotVec(tf2::Vector3(s.x() * gain_[3], s.y() * gain_[4], 0.0));
         const tf2::Quaternion twist_g(tf2::Vector3(0.0, 0.0, 1.0), twist_angle * gain_[5]);
         tf2::Quaternion out = swing_g * twist_g;
         out.normalize();
