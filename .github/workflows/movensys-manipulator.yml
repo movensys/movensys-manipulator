@@ -4,6 +4,10 @@ on:
   pull_request:
     branches: [main, devel]
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   build-and-test:
     strategy:
@@ -16,6 +20,10 @@ jobs:
             os: ubuntu-22.04
 
     runs-on: ${{ matrix.os }}
+    # The ros-base images ship rosdep, colcon and the ROS apt source, so no
+    # setup-ros action is needed (it queries the GitHub API anonymously and
+    # fails on rate limits).
+    container: ros:${{ matrix.ros_distro }}-ros-base
     env:
       MANIPULATOR_MODEL: dobot_cr3a
 
@@ -23,20 +31,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup ROS ${{ matrix.ros_distro }}
-        uses: ros-tooling/setup-ros@v0.7
-        with:
-          required-ros-distributions: ${{ matrix.ros_distro }}
-
       - name: Setup workspace
         run: |
           mkdir -p ~/movensys_ws/src
-          ln -s ${{ github.workspace }} ~/movensys_ws/src/movensys-manipulator
+          # Use the env var, not the github.workspace expression: inside a
+          # container job the expression expands to the *host* path, leaving a
+          # dangling symlink that makes rosdep and colcon silently find zero
+          # packages. The ls fails the step if the link does not resolve.
+          ln -s "$GITHUB_WORKSPACE" ~/movensys_ws/src/movensys-manipulator
+          ls ~/movensys_ws/src/movensys-manipulator/*/package.xml
 
       - name: Install dependencies
         run: |
-          sudo rosdep init || true
-          rosdep update
+          apt-get update
+          rosdep update --rosdistro ${{ matrix.ros_distro }}
           cd ~/movensys_ws
           rosdep install --from-paths src --ignore-src -y \
             --rosdistro ${{ matrix.ros_distro }}

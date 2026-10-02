@@ -55,7 +55,10 @@
 // values in between damp it. Because the target is rebuilt from the anchor every
 // cycle, a pinned axis needs no extra state -- zeroing its delta *is* holding it.
 // Modes are named presets (see kModePresets), switchable at runtime through the
-// `motion_mode` parameter or a controller button. Every switch re-anchors:
+// `motion_mode` parameter, a controller button, or a gesture axis on the Joy
+// message (`translate_axis_index` / `orient_axis_index`: the hand teleop raises
+// one axis per gesture, pinch = translate, fist = orient, and the mode is picked
+// before the clutch anchors on that same message). Every switch re-anchors:
 // without that, dropping an axis collapses its accumulated delta to zero in a
 // single cycle and steps the target discontinuously.
 //
@@ -95,7 +98,8 @@ constexpr int8_t CMD_POSE = 2;
 // Per-axis gains on the clutch delta: [tx, ty, tz, rx, ry, rz]. 0 pins the axis
 // to its anchored value, 1 follows the hand 1:1. Rotation axis names below are
 // those of the *mask frame* (mask_frame=base: rz=yaw, ry=pitch, rx=roll about
-// the robot base; mask_frame=tool: the same about the anchored tool axes).
+// the robot base; mask_frame=tool: rx/ry swing the anchored tool axis, rz is the
+// twist about it -- a true swing/twist split, see maskSwingTwist).
 using DofGain = std::array<double, 6>;
 
 struct ModePreset {
@@ -107,6 +111,7 @@ constexpr ModePreset kModePresets[] = {
     {"full",        {{1, 1, 1, 1, 1, 1}}},
     {"translation", {{1, 1, 1, 0, 0, 0}}},
     {"rotation",    {{0, 0, 0, 1, 1, 1}}},
+    {"tilt",        {{0, 0, 0, 1, 1, 0}}},  // orientation without twist about mask z
     {"planar",      {{1, 1, 0, 0, 0, 1}}},  // tabletop: XY + yaw
     {"vertical",    {{0, 0, 1, 0, 0, 0}}},
     {"yaw",         {{0, 0, 0, 0, 0, 1}}},
@@ -253,6 +258,15 @@ public:
         mode_cycle_list_   = declare<std::vector<std::string>>(
             "mode_cycle_list", {"full", "translation", "planar", "yaw"});
         validateCycleList();
+        // Gesture-selected modes: a Joy axis held at or above the enable
+        // threshold picks the mode named for it; -1 disables. The Quest
+        // publishes no such axes, so the defaults leave only the parameter and
+        // button paths, exactly as before.
+        translate_axis_index_ = declare<int>("translate_axis_index", -1);
+        orient_axis_index_    = declare<int>("orient_axis_index", -1);
+        translate_mode_ = declare<std::string>("translate_mode", "translation");
+        orient_mode_    = declare<std::string>("orient_mode", "rotation");
+        validateGestureModes();
 
         if (!updateFrameTransform(axis_map_spec_, align_rpy_deg_, rot_map_spec_, rot_rpy_deg_)) {
             RCLCPP_ERROR(node_->get_logger(),
@@ -432,6 +446,46 @@ private:
         }
     }
 
+    void validateGestureModes() {
+        DofGain unused;
+        for (const std::string* name : {&translate_mode_, &orient_mode_}) {
+            if (*name != kCustomMode && !lookupPreset(*name, unused)) {
+                RCLCPP_WARN(node_->get_logger(),
+                            "gesture mode '%s' is not a known mode; the gesture that "
+                            "selects it will be rejected.",
+                            name->c_str());
+            }
+        }
+    }
+
+    // Map the gesture axes of a Joy message onto motion_mode. Routed through the
+    // parameter, like cycleMode(), so `ros2 param get` stays truthful and the
+    // switch re-anchors if the clutch happens to be held. A no-op while both
+    // axes are disabled or low (hand open), so a manual `ros2 param set` still
+    // holds between gestures.
+    void selectModeFromAxes(const sensor_msgs::msg::Joy& msg) {
+        const auto high = [&](int idx) {
+            return idx >= 0 && static_cast<size_t>(idx) < msg.axes.size() &&
+                   msg.axes[idx] >= enable_axis_threshold_;
+        };
+        const std::string* want = nullptr;
+        if (high(orient_axis_index_)) {
+            want = &orient_mode_;
+        } else if (high(translate_axis_index_)) {
+            want = &translate_mode_;
+        }
+        if (want == nullptr || *want == motion_mode_) {
+            return;
+        }
+        const auto result = node_->set_parameter(rclcpp::Parameter("motion_mode", *want));
+        if (!result.successful) {
+            // Throttled: the axis stays high for the whole gesture.
+            RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 2000,
+                                 "Gesture mode '%s' rejected: %s", want->c_str(),
+                                 result.reason.c_str());
+        }
+    }
+
     // Swap the active gain vector. Re-anchors in the same critical section, so
     // the operator's accumulated delta on a newly-pinned axis is discarded
     // against a fresh anchor instead of stepping the target.
@@ -562,6 +616,16 @@ private:
                 validateCycleList();
             } else if (p.get_name() == "mode_cycle_button") {
                 mode_cycle_button_ = static_cast<int>(p.as_int());
+            } else if (p.get_name() == "translate_axis_index") {
+                translate_axis_index_ = static_cast<int>(p.as_int());
+            } else if (p.get_name() == "orient_axis_index") {
+                orient_axis_index_ = static_cast<int>(p.as_int());
+            } else if (p.get_name() == "translate_mode") {
+                translate_mode_ = p.as_string();
+                validateGestureModes();
+            } else if (p.get_name() == "orient_mode") {
+                orient_mode_ = p.as_string();
+                validateGestureModes();
             } else if (p.get_name() == "debug_axes") {
                 debug_axes_.store(p.as_bool());
             } else if (p.get_name() == "pose_timeout_s") {
@@ -689,6 +753,12 @@ private:
                    static_cast<size_t>(enable_axis_index_) < msg->axes.size()) {
             pressed = msg->axes[enable_axis_index_] >= enable_axis_threshold_;
         }
+
+        // The gesture axes arrive on the same message as the engage edge, so
+        // pick the mode first: engage() then latches under the new gain instead
+        // of anchoring in the old mode and re-anchoring a cycle later.
+        selectModeFromAxes(*msg);
+
         if (pressed && !engaged_.load()) {
             engage();
         } else if (!pressed && engaged_.load()) {
@@ -823,12 +893,29 @@ private:
         return tf2::quatRotate(q_mask, v);
     }
 
+    // Rotation vector (log map) of a unit quaternion with w >= 0, and back.
+    static tf2::Vector3 toRotVec(const tf2::Quaternion& q) {
+        const double angle = q.getAngle();
+        if (angle < 1e-9) {
+            return tf2::Vector3(0.0, 0.0, 0.0);  // getAxis() is arbitrary here
+        }
+        return q.getAxis() * angle;
+    }
+
+    static tf2::Quaternion fromRotVec(const tf2::Vector3& v) {
+        const double angle = v.length();
+        if (angle < 1e-9) {
+            return tf2::Quaternion::getIdentity();
+        }
+        return tf2::Quaternion(v / angle, angle);
+    }
+
     // Per-axis gains cannot be applied to a quaternion directly, so drop into the
     // rotation-vector (log map) representation, scale there, and exponentiate
     // back. This is continuous everywhere, unlike an Euler decomposition, which
-    // would be order-dependent and gimbal-lock at pitch +-90deg. For a uniform
-    // gain it is exactly slerp from identity, which is how orientation_scale_ is
-    // folded in here.
+    // would be order-dependent and gimbal-lock at pitch +-90deg. orientation_scale_
+    // is applied first, uniformly, which is exactly slerp from identity; the
+    // per-axis gains then act on the damped delta in the mask frame.
     tf2::Quaternion maskRotation(tf2::Quaternion dq, const tf2::Quaternion& q_mask) const {
         if (dq.w() < 0.0) {
             // Shortest path: tf2's getAngle() spans [0, 2pi], so a negative-w
@@ -836,20 +923,43 @@ private:
             dq = tf2::Quaternion(-dq.x(), -dq.y(), -dq.z(), -dq.w());
         }
         const tf2::Quaternion dl = q_mask.inverse() * dq * q_mask;
-        const double angle = dl.getAngle();
-        if (angle < 1e-9) {
-            return tf2::Quaternion::getIdentity();  // getAxis() is arbitrary here
+        const tf2::Vector3 v = toRotVec(dl) * orientation_scale_;
+        tf2::Quaternion masked;
+        if (mask_frame_tool_) {
+            masked = maskSwingTwist(fromRotVec(v));
+        } else {
+            masked = fromRotVec(tf2::Vector3(v.x() * gain_[3], v.y() * gain_[4], v.z() * gain_[5]));
         }
-        tf2::Vector3 v = dl.getAxis() * angle;
-        v.setValue(v.x() * gain_[3] * orientation_scale_,
-                   v.y() * gain_[4] * orientation_scale_,
-                   v.z() * gain_[5] * orientation_scale_);
-        const double masked_angle = v.length();
-        if (masked_angle < 1e-9) {
-            return tf2::Quaternion::getIdentity();
-        }
-        const tf2::Quaternion masked(v / masked_angle, masked_angle);
         return q_mask * masked * q_mask.inverse();
+    }
+
+    // Tool-frame mask. Zeroing the z component of the rotation vector does not
+    // remove rotation about the tool axis: a delta with rotation vector
+    // (a, b, 0) still carries a twist about z of second order in a and b, and
+    // the swing-only hand orientation (perception/orientation.py) arrives with
+    // exactly such a twist whenever the clutch was anchored off the lens axis.
+    // So split the delta properly: q = swing * twist, where twist is the
+    // rotation about the anchored tool z and swing is the minimal rotation
+    // carrying that axis where q carries it (axis perpendicular to z). rx/ry
+    // gain the swing's rotation vector, rz gains the signed twist angle, and with
+    // rz = 0 the result is the unique rotation that tilts the tool axis without
+    // turning the tool about it. `q` is in the mask frame with w >= 0.
+    tf2::Quaternion maskSwingTwist(const tf2::Quaternion& q) const {
+        const double n = std::sqrt(q.z() * q.z() + q.w() * q.w());
+        tf2::Quaternion twist = tf2::Quaternion::getIdentity();
+        double twist_angle = 0.0;
+        if (n > 1e-9) {  // n == 0 only for a 180deg swing, which has no twist
+            twist = tf2::Quaternion(0.0, 0.0, q.z() / n, q.w() / n);
+            twist_angle = 2.0 * std::atan2(q.z(), q.w());  // signed, (-pi, pi]
+        }
+        const tf2::Quaternion swing = q * twist.inverse();  // w >= 0, z == 0
+        const tf2::Vector3 s = toRotVec(swing);
+        const tf2::Quaternion swing_g =
+            fromRotVec(tf2::Vector3(s.x() * gain_[3], s.y() * gain_[4], 0.0));
+        const tf2::Quaternion twist_g(tf2::Vector3(0.0, 0.0, 1.0), twist_angle * gain_[5]);
+        tf2::Quaternion out = swing_g * twist_g;
+        out.normalize();
+        return out;
     }
 
     // --- streaming --------------------------------------------------------
@@ -958,6 +1068,8 @@ private:
     bool mask_frame_tool_{false};
     int mode_cycle_button_{-1};
     bool cycle_prev_{false};
+    int translate_axis_index_{-1}, orient_axis_index_{-1};
+    std::string translate_mode_{"translation"}, orient_mode_{"rotation"};
 
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr target_pub_;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr mode_pub_;
