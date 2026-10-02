@@ -32,7 +32,12 @@ jobs:
       - name: Setup workspace
         run: |
           mkdir -p ~/movensys_ws/src
-          ln -s ${{ github.workspace }} ~/movensys_ws/src/movensys-manipulator
+          # Use the env var, not the github.workspace expression: inside a
+          # container job the expression expands to the *host* path, leaving a
+          # dangling symlink that makes rosdep and colcon silently find zero
+          # packages. The ls fails the step if the link does not resolve.
+          ln -s "$GITHUB_WORKSPACE" ~/movensys_ws/src/movensys-manipulator
+          ls ~/movensys_ws/src/movensys-manipulator/*/package.xml
 
       - name: rosdep install
         run: |
