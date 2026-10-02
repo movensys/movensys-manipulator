@@ -4,6 +4,10 @@ on:
   pull_request:
     branches: [main, devel]
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   build-and-test:
     strategy:
@@ -16,17 +20,16 @@ jobs:
             os: ubuntu-22.04
 
     runs-on: ${{ matrix.os }}
+    # The ros-base images ship rosdep, colcon and the ROS apt source, so no
+    # setup-ros action is needed (it queries the GitHub API anonymously and
+    # fails on rate limits).
+    container: ros:${{ matrix.ros_distro }}-ros-base
     env:
       MANIPULATOR_MODEL: dobot_cr3a
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Setup ROS ${{ matrix.ros_distro }}
-        uses: ros-tooling/setup-ros@v0.7
-        with:
-          required-ros-distributions: ${{ matrix.ros_distro }}
 
       - name: Setup workspace
         run: |
@@ -35,8 +38,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo rosdep init || true
-          rosdep update
+          apt-get update
+          rosdep update --rosdistro ${{ matrix.ros_distro }}
           cd ~/movensys_ws
           rosdep install --from-paths src --ignore-src -y \
             --rosdistro ${{ matrix.ros_distro }}
