@@ -61,7 +61,7 @@ jobs:
           source /opt/ros/${{ matrix.ros_distro }}/setup.bash
           cd ~/movensys_ws
           source install/setup.bash
-          for model in dobot_cr3a dobot_cr5a; do
+          for model in dobot_cr3a dobot_cr5a synustech; do
             echo "=== xacro test: $model ==="
             xacro src/movensys-manipulator/movensys_manipulator_description/urdf/$model/movensys_manipulator.xacro \
               > /tmp/$model.urdf
@@ -73,7 +73,7 @@ jobs:
           source /opt/ros/${{ matrix.ros_distro }}/setup.bash
           cd ~/movensys_ws
           source install/setup.bash
-          for model in dobot_cr3a dobot_cr5a; do
+          for model in dobot_cr3a dobot_cr5a synustech; do
             echo "=== launch test: $model ==="
             env MANIPULATOR_MODEL=$model timeout 30s ros2 launch \
               movensys_manipulator_description gazebo_trajectory_simulation.launch.py \

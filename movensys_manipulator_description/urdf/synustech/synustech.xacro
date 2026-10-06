@@ -1,0 +1,176 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!--
+    Synustech 6-axis arm.
+
+    Link frames and joint origins come from the vendor reference URDF
+    (ref_files/synustech_description). Meshes are authored in millimetres in
+    each link's own joint frame, hence scale 0.001 and zero visual origins.
+
+    The reference URDF had every arm joint fixed, so the joint axes below are
+    inferred from the mesh geometry and MUST be verified against the real arm
+    (see TODO markers). Position limits are placeholders until the datasheet
+    values are available.
+  -->
+
+  <xacro:macro name="synustech" params="joint_vel joint_effort">
+
+    <xacro:property name="mesh_dir"
+                    value="file://$(find movensys_manipulator_description)/urdf/synustech/assets"/>
+
+    <!-- TODO(synustech) - replace with datasheet joint ranges -->
+    <xacro:property name="lim_lower" value="-3.14"/>
+    <xacro:property name="lim_upper" value="3.14"/>
+
+    <xacro:macro name="synustech_link" params="name mesh mass ixx ixy ixz iyy iyz izz com">
+      <link name="${name}">
+        <inertial>
+          <origin xyz="${com}" rpy="0 0 0" />
+          <mass value="${mass}" />
+          <inertia ixx="${ixx}" ixy="${ixy}" ixz="${ixz}" iyy="${iyy}" iyz="${iyz}" izz="${izz}" />
+        </inertial>
+        <visual>
+          <origin xyz="0 0 0" rpy="0 0 0" />
+          <geometry>
+            <mesh filename="${mesh_dir}/${mesh}" scale="0.001 0.001 0.001" />
+          </geometry>
+          <material name=""><color rgba="1 1 1 1" /></material>
+        </visual>
+        <collision>
+          <origin xyz="0 0 0" rpy="0 0 0" />
+          <geometry>
+            <mesh filename="${mesh_dir}/${mesh}" scale="0.001 0.001 0.001" />
+          </geometry>
+        </collision>
+      </link>
+    </xacro:macro>
+
+    <xacro:synustech_link name="Link0" mesh="Link0.STL" mass="2.128"
+      com="1.0276E-05 0.014119 0.064841"
+      ixx="0.013624" ixy="-1.2075E-05" ixz="1.8225E-06"
+      iyy="0.018307" iyz="0.00049878" izz="0.023934" />
+
+    <!-- joint1 - base yaw. Link0 local -y is world +z at the mount. -->
+    <!-- TODO(synustech) - verify axis sign on the real arm -->
+    <joint name="joint1" type="revolute">
+      <origin xyz="0 -0.23 0" rpy="0 0 0" />
+      <parent link="Link0" />
+      <child link="Link1" />
+      <axis xyz="0 -1 0" />
+      <limit lower="${lim_lower}" upper="${lim_upper}" effort="${joint_effort}" velocity="${joint_vel}" />
+      <dynamics damping="15.0" friction="1.0"/>
+    </joint>
+
+    <gazebo reference="joint1">
+      <implicitSpringDamper>true</implicitSpringDamper>
+    </gazebo>
+
+    <xacro:synustech_link name="Link1" mesh="Link1.STL" mass="14.725"
+      com="1.0951E-07 0.021145 0.0017549"
+      ixx="0.066928" ixy="3.4809E-07" ixz="2.7188E-07"
+      iyy="0.06743" iyz="-0.0064955" izz="0.071272" />
+
+    <!-- joint2 - shoulder pitch. Upper arm runs along Link2 local +x (0.5 m). -->
+    <!-- TODO(synustech) - verify axis sign on the real arm -->
+    <joint name="joint2" type="revolute">
+      <origin xyz="0 0 0.175" rpy="${-pi/2} 0 ${-pi/2}" />
+      <parent link="Link1" />
+      <child link="Link2" />
+      <axis xyz="0 -1 0" />
+      <limit lower="${lim_lower}" upper="${lim_upper}" effort="${joint_effort}" velocity="${joint_vel}" />
+      <dynamics damping="15.0" friction="1.0"/>
+    </joint>
+
+    <gazebo reference="joint2">
+      <implicitSpringDamper>true</implicitSpringDamper>
+    </gazebo>
+
+    <xacro:synustech_link name="Link2" mesh="Link2.STL" mass="25.912"
+      com="0.19999 -7.3565E-07 0.037425"
+      ixx="0.11326" ixy="-9.4175E-07" ixz="-0.0039858"
+      iyy="0.16267" iyz="1.1586E-06" izz="0.16558" />
+
+    <!-- joint3 - elbow pitch, parallel to joint2. Forearm runs along Link3 local +x (0.46 m). -->
+    <!-- TODO(synustech) - verify axis sign on the real arm -->
+    <joint name="joint3" type="revolute">
+      <origin xyz="0.5 0 0" rpy="0 ${-pi/2} 0" />
+      <parent link="Link2" />
+      <child link="Link3" />
+      <axis xyz="0 -1 0" />
+      <limit lower="${lim_lower}" upper="${lim_upper}" effort="${joint_effort}" velocity="${joint_vel}" />
+      <dynamics damping="15.0" friction="1.0"/>
+    </joint>
+
+    <gazebo reference="joint3">
+      <implicitSpringDamper>true</implicitSpringDamper>
+    </gazebo>
+
+    <xacro:synustech_link name="Link3" mesh="Link3.STL" mass="7.595"
+      com="0.20158 -1.857E-07 -0.13238"
+      ixx="0.029966" ixy="1.4877E-07" ixz="0.0014216"
+      iyy="0.076218" iyz="-3.8408E-08" izz="0.076757" />
+
+    <!-- joint4 - wrist roll, along the 0.15 m drop to Link5 (Link4 local z). -->
+    <!-- TODO(synustech) - verify axis sign on the real arm -->
+    <joint name="joint4" type="revolute">
+      <origin xyz="0.46 0 0" rpy="0 ${pi} 0" />
+      <parent link="Link3" />
+      <child link="Link4" />
+      <axis xyz="0 0 1" />
+      <limit lower="${lim_lower}" upper="${lim_upper}" effort="${joint_effort}" velocity="${joint_vel}" />
+      <dynamics damping="10.0" friction="1.0"/>
+    </joint>
+
+    <gazebo reference="joint4">
+      <implicitSpringDamper>true</implicitSpringDamper>
+    </gazebo>
+
+    <xacro:synustech_link name="Link4" mesh="Link4.STL" mass="4.705"
+      com="-8.671E-07 -0.0017736 -0.014039"
+      ixx="0.008699" ixy="-6.6695E-08" ixz="1.574E-08"
+      iyy="0.0082917" iyz="0.00074702" izz="0.0086035" />
+
+    <!-- joint5 - wrist pitch, perpendicular to joint4 and joint6 (Link5 local x). -->
+    <!-- TODO(synustech) - verify axis sign on the real arm -->
+    <joint name="joint5" type="revolute">
+      <origin xyz="0 0 -0.15" rpy="${pi/2} 0 ${pi}" />
+      <parent link="Link4" />
+      <child link="Link5" />
+      <axis xyz="1 0 0" />
+      <limit lower="${lim_lower}" upper="${lim_upper}" effort="${joint_effort}" velocity="${joint_vel}" />
+      <dynamics damping="10.0" friction="1.0"/>
+    </joint>
+
+    <gazebo reference="joint5">
+      <implicitSpringDamper>true</implicitSpringDamper>
+    </gazebo>
+
+    <xacro:synustech_link name="Link5" mesh="Link5.STL" mass="4.705"
+      com="-2.7502E-07 0.0017736 -0.014039"
+      ixx="0.008699" ixy="1.3768E-07" ixz="-1.0778E-07"
+      iyy="0.0082917" iyz="-0.00074702" izz="0.0086035" />
+
+    <!-- joint6 - flange roll. The flange face is 55 mm along Link6 local +y. -->
+    <!-- TODO(synustech) - verify axis sign on the real arm -->
+    <joint name="joint6" type="revolute">
+      <origin xyz="0 0 0.1" rpy="${-pi/2} 0 0" />
+      <parent link="Link5" />
+      <child link="Link6" />
+      <axis xyz="0 1 0" />
+      <limit lower="${lim_lower}" upper="${lim_upper}" effort="${joint_effort}" velocity="${joint_vel}" />
+      <dynamics damping="5.0" friction="0.5"/>
+    </joint>
+
+    <gazebo reference="joint6">
+      <implicitSpringDamper>true</implicitSpringDamper>
+    </gazebo>
+
+    <xacro:synustech_link name="Link6" mesh="Link6.STL" mass="1.652"
+      com="2.5622E-07 0.00026203 -0.032568"
+      ixx="0.0010085" ixy="2.8568E-19" ixz="-1.2409E-18"
+      iyy="0.0010085" iyz="-1.2499E-18" izz="0.0018936" />
+
+  </xacro:macro>
+
+</robot>

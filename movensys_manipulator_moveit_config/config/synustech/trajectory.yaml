@@ -1,0 +1,29 @@
+trajectory_test:
+  ros__parameters:
+    # Trajectory waypoints for the Synustech arm.
+    # Pose targets: [x, y, z, roll, pitch, yaw] in the world_manipulator frame.
+    # Joint targets: one value per joint (must match joint_names length).
+    #
+    # The arm base sits at table (-0.03, 0.275, 0.05); shoulder is ~0.53 m above
+    # the table and the upper arm + forearm span 0.5 + 0.46 m, so these targets
+    # sit in front of the base at mid height with the tool pointing down.
+    # TODO(synustech): re-record once the joint axes and zero pose are verified.
+
+    joint_names: [joint1, joint2, joint3, joint4, joint5, joint6]
+
+    joint_initial_0: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+    cartesian_poses_0: [0.45, 0.275, 0.60, 3.14159265, 0.0, 0.0]
+    cartesian_poses_1: [0.45, 0.075, 0.60, 3.14159265, 0.0, 0.0]
+
+    relative_base_deltas_0: [-0.1, 0.0, 0.0, 0.0, 0.0,  0.39269908]
+    relative_base_deltas_1: [ 0.1, 0.0, 0.0, 0.0, 0.0, -0.39269908]
+
+    relative_tool_deltas_0: [-0.1, 0.0, 0.0, 0.0, 0.0,  0.39269908]
+    relative_tool_deltas_1: [ 0.1, 0.0, 0.0, 0.0, 0.0, -0.39269908]
+
+    joint_poses_0: [0.3, -0.3, 0.6, 0.0, 0.5, 0.3]
+    joint_poses_1: [0.0,  0.0, 0.0, 0.0, 0.0, 0.0]
+
+    joint_movement_poses_0: [0.45, 0.275, 0.60, 3.14159265, 0.0, 0.0]
+    joint_movement_poses_1: [0.45, 0.075, 0.60, 3.14159265, 0.0, 0.0]

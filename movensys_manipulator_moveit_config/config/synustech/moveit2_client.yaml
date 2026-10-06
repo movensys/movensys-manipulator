@@ -1,0 +1,14 @@
+/**:
+  ros__parameters:
+    base_name:         "world_manipulator"
+    eef_name:          "Link6"
+    vel_scale:         1.0
+    acc_scale:         1.0
+    delay_exec:        0.1
+    delay_gripper:     1.0
+    max_step:          0.1
+    planning_time:     1.0
+    timeout:           1.0
+    planning_attempts: 5
+    replan:            true
+    replan_attempts:   5

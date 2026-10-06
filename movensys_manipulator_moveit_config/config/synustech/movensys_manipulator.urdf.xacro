@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="movensys_manipulator">
+    <xacro:arg name="initial_positions_file" default="initial_positions.yaml" />
+    
+    <xacro:include filename="$(find movensys_manipulator_description)/urdf/synustech/movensys_manipulator.xacro"/> 
+
+    <xacro:include filename="movensys_manipulator_arm.ros2_control.xacro" />
+
+    <xacro:movensys_manipulator_arm_ros2_control name="MovensysManipulatorArmFakeSystem" initial_positions_file="$(arg initial_positions_file)"/>
+</robot>

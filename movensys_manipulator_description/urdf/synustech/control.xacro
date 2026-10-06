@@ -1,0 +1,71 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+	<!-- Detect ROS distro for Gazebo plugin selection (Humble=Ignition, Jazzy=modern Gazebo) -->
+	<xacro:arg name="ros_distro" default="$(optenv ROS_DISTRO)"/>
+	<xacro:property name="ros_distro" value="$(arg ros_distro)"/>
+	<xacro:property name="hw_plugin"
+			value="${'ign_ros2_control/IgnitionSystem' if ros_distro == 'humble'
+												else 'gz_ros2_control/GazeboSimSystem' if ros_distro == 'jazzy'
+												else 'gz_ros2_control/GazeboSimSystem'}"/>
+	<xacro:property name="gz_plugin_filename"
+			value="${'ign_ros2_control-system' if ros_distro == 'humble'
+												else 'gz_ros2_control-system' if ros_distro == 'jazzy'
+												else 'gz_ros2_control-system'}"/>
+	<xacro:property name="gz_plugin_name"
+			value="${'ign_ros2_control::IgnitionROS2ControlPlugin' if ros_distro == 'humble'
+												else 'gz_ros2_control::GazeboSimROS2ControlPlugin' if ros_distro == 'jazzy'
+												else 'gz_ros2_control::GazeboSimROS2ControlPlugin'}"/>
+
+	<ros2_control name="GazeboSystem" type="system">
+		<hardware>
+			<plugin>${hw_plugin}</plugin>
+	    	</hardware>
+
+	    	<joint name="joint1">
+	    		<command_interface name="position"/>
+	    		<state_interface name="position"/>
+	    		<state_interface name="velocity"/>
+	    	</joint>
+
+	    	<joint name="joint2">
+	    		<command_interface name="position"/>
+	    		<state_interface name="position"/>
+	    		<state_interface name="velocity"/>
+	    	</joint>
+
+			<joint name="joint3">
+					<command_interface name="position"/>
+					<state_interface name="position"/>
+					<state_interface name="velocity"/>
+				</joint>
+
+			<joint name="joint4">
+					<command_interface name="position"/>
+					<state_interface name="position"/>
+					<state_interface name="velocity"/>
+				</joint>
+
+			<joint name="joint5">
+					<command_interface name="position"/>
+					<state_interface name="position"/>
+					<state_interface name="velocity"/>
+				</joint>
+
+			<joint name="joint6">
+					<command_interface name="position"/>
+					<state_interface name="position"/>
+					<state_interface name="velocity"/>
+				</joint>
+
+	  	</ros2_control>
+
+	<gazebo>
+		<plugin filename="${gz_plugin_filename}" name="${gz_plugin_name}">
+			<robot_param>robot_description</robot_param>
+			<robot_param_node>robot_state_publisher</robot_param_node>
+			<parameters>$(find movensys_manipulator_description)/urdf/synustech/control.yaml</parameters>
+		</plugin>
+	</gazebo>
+
+</robot>

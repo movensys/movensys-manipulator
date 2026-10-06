@@ -29,3 +29,4 @@ tools/data_collection/output/
 venv/
 
 .claude/
+ref_files/

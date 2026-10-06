@@ -38,7 +38,7 @@ object detection, and AprilTag with Nvblox combined.
 
 | Package | Description |
 |---------|-------------|
-| `movensys_manipulator_description`      | URDF/xacro, meshes, and RViz/Gazebo bring-up for the Dobot CR3A/CR5A arms |
+| `movensys_manipulator_description`      | URDF/xacro, meshes, and RViz/Gazebo bring-up for the Dobot CR3A/CR5A and Synustech arms |
 | `movensys_manipulator_moveit_config`    | MoveIt 2 configuration, the `moveit2_api` service node (`/wmx/moveit2/*`), the simulator bridge, and the demo launches (trajectory, AprilTag pick-and-place, obstacle avoidance, YOLO) |
 | `movensys_manipulator_isaac_ros_config` | NVIDIA Isaac ROS launches — Isaac cuMotion planning plus Isaac AprilTag and Nvblox perception bridges |
 | `movensys_manipulator_perception`       | Perception nodes: AprilTag detection and YOLO OBB cube/dice detectors, with camera bring-up |
@@ -85,7 +85,7 @@ export ROS_DOMAIN_ID=73                         # any free domain id
 export ROS_DISTRO=jazzy                         # {jazzy, humble}
 export MOVENSYS_ROS_VERSION=isaac-ros_4.1       # {general, intel-xpu, isaac-ros_4.1, isaac-ros_3.2}
 export CPU_ARCH=amd64                           # {amd64, arm64}
-export MANIPULATOR_MODEL=dobot_cr3a             # {dobot_cr3a, dobot_cr5a}
+export MANIPULATOR_MODEL=dobot_cr3a             # {dobot_cr3a, dobot_cr5a, synustech}
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 
 source ~/workspaces/movensys_ws/src/movensys-manipulator/docker/mros.bash

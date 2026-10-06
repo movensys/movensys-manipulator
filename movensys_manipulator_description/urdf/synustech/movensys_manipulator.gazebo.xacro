@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<robot name="movensys_manipulator" xmlns:xacro="http://ros.org/wiki/xacro">
+  <xacro:include filename="$(find movensys_manipulator_description)/urdf/synustech/movensys_manipulator.xacro"/>
+  <xacro:include filename="$(find movensys_manipulator_description)/urdf/synustech/control.xacro"/>
+  <xacro:include filename="$(find movensys_manipulator_description)/urdf/synustech/transmission.xacro"/> 
+
+  <link name="world"/>
+
+  <joint name="world_fixed" type="fixed">
+    <parent link="world"/>
+    <child link="world_manipulator"/>
+  </joint>
+</robot>

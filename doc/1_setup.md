@@ -8,7 +8,7 @@ export CPU_ARCH=amd64                           #support {amd64, arm64}
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 
 export MOVENSYS_ROS_VERSION=isaac-ros_4.1       #support {general, intel-xpu, isaac-ros_4.1, isaac-ros_3.2} 
-export MANIPULATOR_MODEL=dobot_cr3a             #support {dobot_cr3a, dobot_cr5a}
+export MANIPULATOR_MODEL=dobot_cr3a             #support {dobot_cr3a, dobot_cr5a, synustech}
 
 source ~/workspaces/movensys_ws/src/movensys-manipulator/docker/mros.bash
 ```

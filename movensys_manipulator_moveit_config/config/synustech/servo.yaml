@@ -1,0 +1,53 @@
+command_in_type: "unitless"
+scale:
+  linear: 0.4        # max linear EEF speed  [m/s]
+  rotational: 0.8    # max angular EEF speed [rad/s]
+  joint: 0.5         # max joint speed for joint-jog commands [rad/s]
+
+override_velocity_scaling_factor: 0.0
+
+publish_period: 0.025            # publish rate [s] (~40 Hz); must be < max_expected_latency/3
+command_out_type: trajectory_msgs/JointTrajectory
+publish_joint_positions: true
+publish_joint_velocities: false
+publish_joint_accelerations: false
+
+# Smooth the streamed commands.
+use_smoothing: true
+smoothing_filter_plugin_name: "online_signal_smoothing::ButterworthFilterPlugin"
+
+# Real-time
+thread_priority: 40
+
+move_group_name: movensys_manipulator_arm   
+planning_frame: world_manipulator           
+ee_frame: Link6                             
+robot_link_command_frame: world_manipulator  
+
+# Follow move_group's planning scene (move_group is the primary monitor), so the
+# two share one collision world when run together from moveit.launch.py.
+is_primary_planning_scene_monitor: false
+monitored_planning_scene_topic: "/monitored_planning_scene"
+
+# Stopping behaviour
+incoming_command_timeout: 0.1            # halt if no command for this long [s]
+num_outgoing_halt_msgs_to_publish: 4
+
+# Singularity / joint-limit handling
+lower_singularity_threshold: 17.0        # start slowing near this condition number
+hard_stop_singularity_threshold: 30.0    # hard stop at this condition number
+leaving_singularity_threshold_multiplier: 2.0
+joint_limit_margins: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
+
+# Topic names
+cartesian_command_in_topic: ~/delta_twist_cmds   # TwistStamped from the keyboard node
+joint_command_in_topic: ~/delta_joint_cmds        # JointJog   from the keyboard node
+joint_topic: /joint_states                         # current state (published by the sim)
+status_topic: ~/status
+command_out_topic: /movensys_manipulator_arm_controller/joint_trajectory
+
+# Collision checking
+check_collisions: true
+collision_check_rate: 10.0
+self_collision_proximity_threshold: 0.01
+scene_collision_proximity_threshold: 0.02

@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+
+<robot name="movensys_manipulator" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+    <xacro:include filename="$(find movensys_manipulator_description)/urdf/synustech/stage.xacro" />
+    <xacro:include filename="$(find movensys_manipulator_description)/urdf/synustech/synustech.xacro"/>
+
+    <link name="world_manipulator"/>
+
+    <joint name="world_manipulator_to_table" type="fixed">
+        <parent link="world_manipulator"/>
+        <child  link="table"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+
+    <xacro:stage />
+
+    <!--
+      Same mount position and yaw as the Dobot CR3A. The extra -pi/2 roll is a
+      mesh-frame convention - the Synustech meshes are authored with local -y
+      pointing up, whereas the Dobot Link0 has +z up.
+    -->
+    <joint name="robot_joint" type="fixed">
+        <origin xyz="-0.03 0.275 0.05" rpy="${-pi/2} 0 -1.57"/>
+        <parent link="table"/>
+        <child link="Link0"/>
+    </joint>
+
+    <xacro:synustech joint_vel="3.0" joint_effort="1000"/>
+
+</robot>
