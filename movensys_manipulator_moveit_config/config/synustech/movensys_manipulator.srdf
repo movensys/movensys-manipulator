@@ -38,45 +38,29 @@
     <joint name="joint6" value="0.096"/>
   </group_state>
 
-  <!-- Disable collisions between adjacent and irrelevant links -->
+  <!--
+    Collision matrix generated with the MoveIt Setup Assistant on 2026-10-07,
+    100000 samples. Of 45 link pairs, 8 are adjacent, 7 never collide and 30
+    collide in some configurations, so only these 15 pairs are disabled. The
+    table and Jetson box are reachable by Link2 to Link6 and must stay enabled.
+  -->
   <disable_collisions link1="table" link2="jetson_thor" reason="Adjacent"/>
   <disable_collisions link1="table" link2="Link0" reason="Adjacent"/>
   <disable_collisions link1="table" link2="Link1" reason="Never"/>
-  <disable_collisions link1="table" link2="Link2" reason="Never"/>
-  <disable_collisions link1="table" link2="Link3" reason="Never"/>
-  <disable_collisions link1="table" link2="Link4" reason="Never"/>
-  <disable_collisions link1="table" link2="Link5" reason="Never"/>
-  <disable_collisions link1="table" link2="Link6" reason="Never"/>
 
   <disable_collisions link1="jetson_thor" link2="Link0" reason="Never"/>
   <disable_collisions link1="jetson_thor" link2="Link1" reason="Never"/>
-  <disable_collisions link1="jetson_thor" link2="Link2" reason="Never"/>
-  <disable_collisions link1="jetson_thor" link2="Link3" reason="Never"/>
-  <disable_collisions link1="jetson_thor" link2="Link4" reason="Never"/>
-  <disable_collisions link1="jetson_thor" link2="Link5" reason="Never"/>
-  <disable_collisions link1="jetson_thor" link2="Link6" reason="Never"/>
 
   <disable_collisions link1="Link0" link2="Link1" reason="Adjacent"/>
   <disable_collisions link1="Link0" link2="Link2" reason="Never"/>
-  <disable_collisions link1="Link0" link2="Link3" reason="Never"/>
-  <disable_collisions link1="Link0" link2="Link4" reason="Never"/>
-  <disable_collisions link1="Link0" link2="Link5" reason="Never"/>
-  <disable_collisions link1="Link0" link2="Link6" reason="Never"/>
 
   <disable_collisions link1="Link1" link2="Link2" reason="Adjacent"/>
-  <disable_collisions link1="Link1" link2="Link3" reason="Never"/>
   <disable_collisions link1="Link1" link2="Link4" reason="Never"/>
-  <disable_collisions link1="Link1" link2="Link5" reason="Never"/>
-  <disable_collisions link1="Link1" link2="Link6" reason="Never"/>
 
   <disable_collisions link1="Link2" link2="Link3" reason="Adjacent"/>
-  <disable_collisions link1="Link2" link2="Link4" reason="Never"/>
-  <disable_collisions link1="Link2" link2="Link5" reason="Never"/>
-  <disable_collisions link1="Link2" link2="Link6" reason="Never"/>
 
   <disable_collisions link1="Link3" link2="Link4" reason="Adjacent"/>
   <disable_collisions link1="Link3" link2="Link5" reason="Never"/>
-  <disable_collisions link1="Link3" link2="Link6" reason="Never"/>
 
   <disable_collisions link1="Link4" link2="Link5" reason="Adjacent"/>
   <disable_collisions link1="Link4" link2="Link6" reason="Never"/>

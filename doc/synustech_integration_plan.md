@@ -140,7 +140,7 @@ files copied from CR5A:
 | File | Change |
 |---|---|
 | `movensys_manipulator.urdf.xacro` | Includes `urdf/synustech/movensys_manipulator.xacro` |
-| `movensys_manipulator.srdf` | Chain `Link0` to `Link6`. Group states `initial`, `zero`, `test` all zero for now, which is the DUCO straight-up pose. Collision matrix rebuilt for `table`, `jetson_thor`, `Link0` to `Link6`. |
+| `movensys_manipulator.srdf` | Chain `Link0` to `Link6`. Group states `zero` (DUCO straight-up), `initial` and `test` (recorded in Gazebo). Collision matrix generated with the Setup Assistant, 15 disabled pairs. |
 | `joint_limits.yaml` | Datasheet velocities 2.094, 2.094, 3.142, 3.927, 3.927, 3.927 rad/s. Acceleration 2.0 rad/s² placeholder. |
 | `initial_positions.yaml` | All zero. |
 | `trajectory.yaml` | Waypoints moved into this arm's workspace, about 0.45 m in front of the base at 0.6 m height, tool pointing down. |
@@ -210,9 +210,14 @@ which must print 0.
    J4 0.015, J5 -1.562, J6 1.511 rad. `test` is the same pose with J6 at
    0.096 rad. Both should be re-checked once the arm has been run through
    WMX.
-3. **Collision matrix check.** Confirm in RViz that `Link1` against `Link3`
-   and `Link2` against `Link4` really never touch across the joint range;
-   otherwise remove those `Never` rows.
+3. **Collision matrix check.** Done on 2026-10-07 with the MoveIt Setup
+   Assistant at 100000 samples. Of 45 pairs only 7 never collide; the SRDF
+   had 28 `Never` rows copied from the CR5A, including `Link1`/`Link3`,
+   `Link2`/`Link4`, and every table and Jetson pair against `Link2` to
+   `Link6`, all of which do collide in reachable poses. The SRDF now
+   disables only the 8 adjacent and 7 never pairs. `zero`, `initial`, and
+   `test` were confirmed collision free against the loaded matrix through
+   the `/check_state_validity` service.
 4. **Full build in the container** with `colcon build`. The current install
    is a plain copy from August and does not contain the new folders.
 5. **Gazebo tuning.** Run `gazebo_trajectory_simulation.launch.py` and tune
