@@ -1,6 +1,6 @@
 # Synustech Arm Integration Plan
 
-Status as of 2026-10-06. Branch `feature/add-synuctech-robot-support`.
+Status as of 2026-10-07. Branch `feature/add-synuctech-robot-support`.
 
 This document records how the Synustech arm is being added as a third
 manipulator model next to the Dobot CR3A and CR5A, what has been implemented,
@@ -168,8 +168,13 @@ files copied from CR5A:
 - `movensys_manipulator_rviz.launch.py` runs with `MANIPULATOR_MODEL=synustech`
   from a scratch build and publishes every link. The robot is visible in RViz
   and follows the joint state sliders.
-- Gazebo was not tested. No Gazebo install is available on the development
-  host, so that step has to run in the container.
+- Gazebo with the sim bridge and `moveit.launch.py` runs with
+  `MANIPULATOR_MODEL=synustech` in the container. Each joint was moved in
+  the positive direction and the rotation sense matches the DUCO manual
+  convention (Fig. 3-13, right-hand about the axes of Fig. 3-12). The URDF
+  `axis` signs are therefore correct relative to the manual. Whether the WMX
+  polarity on axes 2 to 7 produces the same sense on the real arm is still
+  open.
 
 ### Gotcha found and fixed
 
@@ -187,7 +192,7 @@ which must print 0.
 
 | # | Item | Blocks | Source |
 |---|---|---|---|
-| 1 | Confirmation of the positive direction of each joint | Sign of each `axis` in `synustech.xacro`, WMX polarity | Jog the real arm one joint at a time and compare with RViz |
+| 1 | Confirmation that the real arm's positive direction matches the manual | WMX polarity on axes 2 to 7 | Jog the real arm one joint at a time and compare with RViz. The URDF side is already verified against the manual in simulation. |
 | 2 | Reducer ratio per joint | WMX parameter file gear ratios, real and HIL modes | Datasheet, drive part numbers, or measured by jogging a known angle |
 | 3 | Physical pose at WMX encoder zero | `AbsoluteEncoderHomeOffset`, or an offset in the URDF | Whoever calibrated the arm for the 2026-03-05 export. Expected to be the DUCO straight-up zero. |
 | 4 | Joint acceleration limits | `joint_limits.yaml`, servo | Not published by DUCO. Tune on hardware. |
@@ -195,14 +200,16 @@ which must print 0.
 
 ### Work remaining in this repo
 
-1. **Sign verification in RViz.** Launch
-   `movensys_manipulator_rviz.launch.py` with `MANIPULATOR_MODEL=synustech`,
-   move each slider in the positive direction, compare against the real arm
-   jogged positive, and flip `axis` signs in `synustech.xacro` where needed.
-   Also check the mesh seams at each joint are small.
-2. **Record group states.** Set `initial` and `test` in the SRDF and
-   `initial_positions.yaml` to useful working poses. The straight-up zero is
-   safe but not a good start pose for planning.
+1. **Sign verification.** Done against the manual on 2026-10-07 in Gazebo
+   with the sim bridge and MoveIt: every joint rotates in the DUCO positive
+   sense. Remaining is the real-arm check, which belongs to the WMX polarity
+   work in `wmx-ros2` rather than to `synustech.xacro`. Mesh seams at each
+   joint still need a visual check.
+2. **Record group states.** Done in simulation on 2026-10-07. `initial`
+   (SRDF and `initial_positions.yaml`) is J1 0.041, J2 -0.071, J3 1.618,
+   J4 0.015, J5 -1.562, J6 1.511 rad. `test` is the same pose with J6 at
+   0.096 rad. Both should be re-checked once the arm has been run through
+   WMX.
 3. **Collision matrix check.** Confirm in RViz that `Link1` against `Link3`
    and `Link2` against `Link4` really never touch across the joint range;
    otherwise remove those `Never` rows.

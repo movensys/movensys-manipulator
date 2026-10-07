@@ -1,9 +1,11 @@
 # Initial positions for the Synustech arm's ros2_control mock system.
-# TODO(synustech): set to the verified initial pose once axes are confirmed.
+# Recorded from /joint_states in Gazebo on 2026-10-07. Keep in sync with the
+# "initial" group state in movensys_manipulator.srdf. Re-check once the joint
+# axes are verified on the real arm.
 initial_positions:
-  joint1: 0.0
-  joint2: 0.0
-  joint3: 0.0
-  joint4: 0.0
-  joint5: 0.0
-  joint6: 0.0
+  joint1: 0.041
+  joint2: -0.071
+  joint3: 1.618
+  joint4: 0.015
+  joint5: -1.562
+  joint6: 1.511
