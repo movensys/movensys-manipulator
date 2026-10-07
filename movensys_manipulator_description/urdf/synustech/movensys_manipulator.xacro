@@ -26,6 +26,7 @@
         <child link="Link0"/>
     </joint>
 
-    <xacro:synustech joint_vel="3.0" joint_effort="1000"/>
+    <!-- joint_vel is only a cap; the macro applies the per-joint datasheet velocities below it. -->
+    <xacro:synustech joint_vel="4.0" joint_effort="1000"/>
 
 </robot>

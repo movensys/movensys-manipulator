@@ -2,16 +2,26 @@
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
   <!--
-    Synustech 6-axis arm.
+    SIASUN DUCO GCR30-1100 6-axis arm (supplied via Synustech).
+    Nameplate - rated load 30 kg, weight 64 kg, arm length 1335 mm.
 
-    Link frames and joint origins come from the vendor reference URDF
-    (ref_files/synustech_description). Meshes are authored in millimetres in
-    each link's own joint frame, hence scale 0.001 and zero visual origins.
+    Meshes come from the vendor reference URDF (ref_files/synustech_description),
+    authored in millimetres in each link's own joint frame, hence scale 0.001
+    and zero visual origins. Each joint module in the meshes is a cylinder
+    whose axis is the link's local y, so every joint axis below is local y.
 
-    The reference URDF had every arm joint fixed, so the joint axes below are
-    inferred from the mesh geometry and MUST be verified against the real arm
-    (see TODO markers). Position limits are placeholders until the datasheet
-    values are available.
+    Zero pose follows the DUCO hardware manual (Fig. 3-12 / 3-13) - arm
+    pointing straight up, shoulder offset and tool flange toward DUCO +Y0,
+    J5 axis vertical. The vendor meshes were authored in a bent pose, so the
+    fixed pitch/roll of joints 3-5 fold that bend away; the meshes themselves
+    are unchanged.
+
+    Link lengths are taken from the manual's dimension drawing (235, 496,
+    459.5, 144.5, 179.3, 121 mm). The reference URDF used rounded values
+    (230, 500, 460, 150, 175, 100), so meshes may show seams of a few mm.
+    Joint ranges and max velocities are from the manual's basic-parameter
+    table. Positive rotation is taken as right-hand about the DUCO frame
+    axes; TODO(synustech) - confirm every sign against the real arm.
   -->
 
   <xacro:macro name="synustech" params="joint_vel joint_effort">
@@ -19,9 +29,14 @@
     <xacro:property name="mesh_dir"
                     value="file://$(find movensys_manipulator_description)/urdf/synustech/assets"/>
 
-    <!-- TODO(synustech) - replace with datasheet joint ranges -->
-    <xacro:property name="lim_lower" value="-3.14"/>
-    <xacro:property name="lim_upper" value="3.14"/>
+    <!-- Manual - J1,J2,J4,J5,J6 +/-360 deg, J3 +/-160 deg -->
+    <xacro:property name="lim_full"  value="${2*pi}"/>
+    <xacro:property name="lim_elbow" value="${160*pi/180}"/>
+
+    <!-- Manual - max joint velocity 120,120,180,225,225,225 deg/s. joint_vel caps them. -->
+    <xacro:property name="vel_base"  value="${min(joint_vel, 120*pi/180)}"/>
+    <xacro:property name="vel_elbow" value="${min(joint_vel, 180*pi/180)}"/>
+    <xacro:property name="vel_wrist" value="${min(joint_vel, 225*pi/180)}"/>
 
     <xacro:macro name="synustech_link" params="name mesh mass ixx ixy ixz iyy iyz izz com">
       <link name="${name}">
@@ -46,19 +61,19 @@
       </link>
     </xacro:macro>
 
+    <!-- Link0 - base. Local -y is up, local z is DUCO +Y0 (shoulder side). -->
     <xacro:synustech_link name="Link0" mesh="Link0.STL" mass="2.128"
       com="1.0276E-05 0.014119 0.064841"
       ixx="0.013624" ixy="-1.2075E-05" ixz="1.8225E-06"
       iyy="0.018307" iyz="0.00049878" izz="0.023934" />
 
-    <!-- joint1 - base yaw. Link0 local -y is world +z at the mount. -->
-    <!-- TODO(synustech) - verify axis sign on the real arm -->
+    <!-- joint1 - base yaw, axis vertical (DUCO Z1). 235 mm above the mount. -->
     <joint name="joint1" type="revolute">
-      <origin xyz="0 -0.23 0" rpy="0 0 0" />
+      <origin xyz="0 -0.235 0" rpy="0 0 0" />
       <parent link="Link0" />
       <child link="Link1" />
       <axis xyz="0 -1 0" />
-      <limit lower="${lim_lower}" upper="${lim_upper}" effort="${joint_effort}" velocity="${joint_vel}" />
+      <limit lower="${-lim_full}" upper="${lim_full}" effort="${joint_effort}" velocity="${vel_base}" />
       <dynamics damping="15.0" friction="1.0"/>
     </joint>
 
@@ -71,14 +86,13 @@
       ixx="0.066928" ixy="3.4809E-07" ixz="2.7188E-07"
       iyy="0.06743" iyz="-0.0064955" izz="0.071272" />
 
-    <!-- joint2 - shoulder pitch. Upper arm runs along Link2 local +x (0.5 m). -->
-    <!-- TODO(synustech) - verify axis sign on the real arm -->
+    <!-- joint2 - shoulder pitch, axis horizontal along DUCO +Y0 (Z2). Shoulder offset 179.3 mm. -->
     <joint name="joint2" type="revolute">
-      <origin xyz="0 0 0.175" rpy="${-pi/2} 0 ${-pi/2}" />
+      <origin xyz="0 0 0.1793" rpy="${-pi/2} 0 ${-pi/2}" />
       <parent link="Link1" />
       <child link="Link2" />
       <axis xyz="0 -1 0" />
-      <limit lower="${lim_lower}" upper="${lim_upper}" effort="${joint_effort}" velocity="${joint_vel}" />
+      <limit lower="${-lim_full}" upper="${lim_full}" effort="${joint_effort}" velocity="${vel_base}" />
       <dynamics damping="15.0" friction="1.0"/>
     </joint>
 
@@ -86,19 +100,19 @@
       <implicitSpringDamper>true</implicitSpringDamper>
     </gazebo>
 
+    <!-- Link2 - upper arm, 496 mm along local +x -->
     <xacro:synustech_link name="Link2" mesh="Link2.STL" mass="25.912"
       com="0.19999 -7.3565E-07 0.037425"
       ixx="0.11326" ixy="-9.4175E-07" ixz="-0.0039858"
       iyy="0.16267" iyz="1.1586E-06" izz="0.16558" />
 
-    <!-- joint3 - elbow pitch, parallel to joint2. Forearm runs along Link3 local +x (0.46 m). -->
-    <!-- TODO(synustech) - verify axis sign on the real arm -->
+    <!-- joint3 - elbow pitch, parallel to joint2 (Z3). Zero = forearm in line with upper arm. -->
     <joint name="joint3" type="revolute">
-      <origin xyz="0.5 0 0" rpy="0 ${-pi/2} 0" />
+      <origin xyz="0.496 0 0" rpy="0 0 0" />
       <parent link="Link2" />
       <child link="Link3" />
       <axis xyz="0 -1 0" />
-      <limit lower="${lim_lower}" upper="${lim_upper}" effort="${joint_effort}" velocity="${joint_vel}" />
+      <limit lower="${-lim_elbow}" upper="${lim_elbow}" effort="${joint_effort}" velocity="${vel_elbow}" />
       <dynamics damping="15.0" friction="1.0"/>
     </joint>
 
@@ -106,19 +120,19 @@
       <implicitSpringDamper>true</implicitSpringDamper>
     </gazebo>
 
+    <!-- Link3 - forearm, 459.5 mm along local +x -->
     <xacro:synustech_link name="Link3" mesh="Link3.STL" mass="7.595"
       com="0.20158 -1.857E-07 -0.13238"
       ixx="0.029966" ixy="1.4877E-07" ixz="0.0014216"
       iyy="0.076218" iyz="-3.8408E-08" izz="0.076757" />
 
-    <!-- joint4 - wrist roll, along the 0.15 m drop to Link5 (Link4 local z). -->
-    <!-- TODO(synustech) - verify axis sign on the real arm -->
+    <!-- joint4 - wrist 1, parallel to joint3 (Z4). Zero = J5 module pointing up along the forearm. -->
     <joint name="joint4" type="revolute">
-      <origin xyz="0.46 0 0" rpy="0 ${pi} 0" />
+      <origin xyz="0.4595 0 0" rpy="0 ${-pi/2} 0" />
       <parent link="Link3" />
       <child link="Link4" />
-      <axis xyz="0 0 1" />
-      <limit lower="${lim_lower}" upper="${lim_upper}" effort="${joint_effort}" velocity="${joint_vel}" />
+      <axis xyz="0 -1 0" />
+      <limit lower="${-lim_full}" upper="${lim_full}" effort="${joint_effort}" velocity="${vel_wrist}" />
       <dynamics damping="10.0" friction="1.0"/>
     </joint>
 
@@ -126,19 +140,19 @@
       <implicitSpringDamper>true</implicitSpringDamper>
     </gazebo>
 
+    <!-- Link4 - wrist 1 module. Its local z is the J5 axis; J5 module sits 144.5 mm along -z. -->
     <xacro:synustech_link name="Link4" mesh="Link4.STL" mass="4.705"
       com="-8.671E-07 -0.0017736 -0.014039"
       ixx="0.008699" ixy="-6.6695E-08" ixz="1.574E-08"
       iyy="0.0082917" iyz="0.00074702" izz="0.0086035" />
 
-    <!-- joint5 - wrist pitch, perpendicular to joint4 and joint6 (Link5 local x). -->
-    <!-- TODO(synustech) - verify axis sign on the real arm -->
+    <!-- joint5 - wrist 2, axis vertical at zero (Z5), perpendicular to joint4 and joint6. -->
     <joint name="joint5" type="revolute">
-      <origin xyz="0 0 -0.15" rpy="${pi/2} 0 ${pi}" />
+      <origin xyz="0 0 -0.1445" rpy="${pi/2} 0 0" />
       <parent link="Link4" />
       <child link="Link5" />
-      <axis xyz="1 0 0" />
-      <limit lower="${lim_lower}" upper="${lim_upper}" effort="${joint_effort}" velocity="${joint_vel}" />
+      <axis xyz="0 -1 0" />
+      <limit lower="${-lim_full}" upper="${lim_full}" effort="${joint_effort}" velocity="${vel_wrist}" />
       <dynamics damping="10.0" friction="1.0"/>
     </joint>
 
@@ -146,19 +160,19 @@
       <implicitSpringDamper>true</implicitSpringDamper>
     </gazebo>
 
+    <!-- Link5 - wrist 2 module. Its local z is the J6 axis; flange centre 121 mm along +z. -->
     <xacro:synustech_link name="Link5" mesh="Link5.STL" mass="4.705"
       com="-2.7502E-07 0.0017736 -0.014039"
       ixx="0.008699" ixy="1.3768E-07" ixz="-1.0778E-07"
       iyy="0.0082917" iyz="-0.00074702" izz="0.0086035" />
 
-    <!-- joint6 - flange roll. The flange face is 55 mm along Link6 local +y. -->
-    <!-- TODO(synustech) - verify axis sign on the real arm -->
+    <!-- joint6 - flange roll, axis along DUCO +Y0 at zero (Z6). Tool points along Link6 -y. -->
     <joint name="joint6" type="revolute">
-      <origin xyz="0 0 0.1" rpy="${-pi/2} 0 0" />
+      <origin xyz="0 0 0.121" rpy="${-pi/2} 0 0" />
       <parent link="Link5" />
       <child link="Link6" />
-      <axis xyz="0 1 0" />
-      <limit lower="${lim_lower}" upper="${lim_upper}" effort="${joint_effort}" velocity="${joint_vel}" />
+      <axis xyz="0 -1 0" />
+      <limit lower="${-lim_full}" upper="${lim_full}" effort="${joint_effort}" velocity="${vel_wrist}" />
       <dynamics damping="5.0" friction="0.5"/>
     </joint>
 
@@ -166,6 +180,7 @@
       <implicitSpringDamper>true</implicitSpringDamper>
     </gazebo>
 
+    <!-- Link6 - tool flange. Origin is the flange face; the 55.5 mm flange body extends along +y back toward Link5. -->
     <xacro:synustech_link name="Link6" mesh="Link6.STL" mass="1.652"
       com="2.5622E-07 0.00026203 -0.032568"
       ixx="0.0010085" ixy="2.8568E-19" ixz="-1.2409E-18"

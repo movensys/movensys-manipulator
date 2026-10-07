@@ -5,16 +5,26 @@
 <!-- =================================================================================== -->
 <robot name="movensys_manipulator">
   <!--
-    Synustech 6-axis arm.
+    SIASUN DUCO GCR30-1100 6-axis arm (supplied via Synustech).
+    Nameplate - rated load 30 kg, weight 64 kg, arm length 1335 mm.
 
-    Link frames and joint origins come from the vendor reference URDF
-    (ref_files/synustech_description). Meshes are authored in millimetres in
-    each link's own joint frame, hence scale 0.001 and zero visual origins.
+    Meshes come from the vendor reference URDF (ref_files/synustech_description),
+    authored in millimetres in each link's own joint frame, hence scale 0.001
+    and zero visual origins. Each joint module in the meshes is a cylinder
+    whose axis is the link's local y, so every joint axis below is local y.
 
-    The reference URDF had every arm joint fixed, so the joint axes below are
-    inferred from the mesh geometry and MUST be verified against the real arm
-    (see TODO markers). Position limits are placeholders until the datasheet
-    values are available.
+    Zero pose follows the DUCO hardware manual (Fig. 3-12 / 3-13) - arm
+    pointing straight up, shoulder offset and tool flange toward DUCO +Y0,
+    J5 axis vertical. The vendor meshes were authored in a bent pose, so the
+    fixed pitch/roll of joints 3-5 fold that bend away; the meshes themselves
+    are unchanged.
+
+    Link lengths are taken from the manual's dimension drawing (235, 496,
+    459.5, 144.5, 179.3, 121 mm). The reference URDF used rounded values
+    (230, 500, 460, 150, 175, 100), so meshes may show seams of a few mm.
+    Joint ranges and max velocities are from the manual's basic-parameter
+    table. Positive rotation is taken as right-hand about the DUCO frame
+    axes; TODO(synustech) - confirm every sign against the real arm.
   -->
   <link name="world_manipulator"/>
   <joint name="world_manipulator_to_table" type="fixed">
@@ -98,14 +108,13 @@
       </geometry>
     </collision>
   </link>
-  <!-- joint1 - base yaw. Link0 local -y is world +z at the mount. -->
-  <!-- TODO(synustech) - verify axis sign on the real arm -->
+  <!-- joint1 - base yaw, axis vertical (DUCO Z1). 235 mm above the mount. -->
   <joint name="joint1" type="revolute">
-    <origin rpy="0 0 0" xyz="0 -0.23 0"/>
+    <origin rpy="0 0 0" xyz="0 -0.235 0"/>
     <parent link="Link0"/>
     <child link="Link1"/>
     <axis xyz="0 -1 0"/>
-    <limit effort="1000" lower="-3.14" upper="3.14" velocity="3.0"/>
+    <limit effort="1000" lower="-6.283185307179586" upper="6.283185307179586" velocity="2.0943951023931953"/>
     <dynamics damping="15.0" friction="1.0"/>
   </joint>
   <gazebo reference="joint1">
@@ -133,14 +142,13 @@
       </geometry>
     </collision>
   </link>
-  <!-- joint2 - shoulder pitch. Upper arm runs along Link2 local +x (0.5 m). -->
-  <!-- TODO(synustech) - verify axis sign on the real arm -->
+  <!-- joint2 - shoulder pitch, axis horizontal along DUCO +Y0 (Z2). Shoulder offset 179.3 mm. -->
   <joint name="joint2" type="revolute">
-    <origin rpy="-1.5707963267948966 0 -1.5707963267948966" xyz="0 0 0.175"/>
+    <origin rpy="-1.5707963267948966 0 -1.5707963267948966" xyz="0 0 0.1793"/>
     <parent link="Link1"/>
     <child link="Link2"/>
     <axis xyz="0 -1 0"/>
-    <limit effort="1000" lower="-3.14" upper="3.14" velocity="3.0"/>
+    <limit effort="1000" lower="-6.283185307179586" upper="6.283185307179586" velocity="2.0943951023931953"/>
     <dynamics damping="15.0" friction="1.0"/>
   </joint>
   <gazebo reference="joint2">
@@ -168,14 +176,13 @@
       </geometry>
     </collision>
   </link>
-  <!-- joint3 - elbow pitch, parallel to joint2. Forearm runs along Link3 local +x (0.46 m). -->
-  <!-- TODO(synustech) - verify axis sign on the real arm -->
+  <!-- joint3 - elbow pitch, parallel to joint2 (Z3). Zero = forearm in line with upper arm. -->
   <joint name="joint3" type="revolute">
-    <origin rpy="0 -1.5707963267948966 0" xyz="0.5 0 0"/>
+    <origin rpy="0 0 0" xyz="0.496 0 0"/>
     <parent link="Link2"/>
     <child link="Link3"/>
     <axis xyz="0 -1 0"/>
-    <limit effort="1000" lower="-3.14" upper="3.14" velocity="3.0"/>
+    <limit effort="1000" lower="-2.792526803190927" upper="2.792526803190927" velocity="3.141592653589793"/>
     <dynamics damping="15.0" friction="1.0"/>
   </joint>
   <gazebo reference="joint3">
@@ -203,14 +210,13 @@
       </geometry>
     </collision>
   </link>
-  <!-- joint4 - wrist roll, along the 0.15 m drop to Link5 (Link4 local z). -->
-  <!-- TODO(synustech) - verify axis sign on the real arm -->
+  <!-- joint4 - wrist 1, parallel to joint3 (Z4). Zero = J5 module pointing up along the forearm. -->
   <joint name="joint4" type="revolute">
-    <origin rpy="0 3.141592653589793 0" xyz="0.46 0 0"/>
+    <origin rpy="0 -1.5707963267948966 0" xyz="0.4595 0 0"/>
     <parent link="Link3"/>
     <child link="Link4"/>
-    <axis xyz="0 0 1"/>
-    <limit effort="1000" lower="-3.14" upper="3.14" velocity="3.0"/>
+    <axis xyz="0 -1 0"/>
+    <limit effort="1000" lower="-6.283185307179586" upper="6.283185307179586" velocity="3.9269908169872414"/>
     <dynamics damping="10.0" friction="1.0"/>
   </joint>
   <gazebo reference="joint4">
@@ -238,14 +244,13 @@
       </geometry>
     </collision>
   </link>
-  <!-- joint5 - wrist pitch, perpendicular to joint4 and joint6 (Link5 local x). -->
-  <!-- TODO(synustech) - verify axis sign on the real arm -->
+  <!-- joint5 - wrist 2, axis vertical at zero (Z5), perpendicular to joint4 and joint6. -->
   <joint name="joint5" type="revolute">
-    <origin rpy="1.5707963267948966 0 3.141592653589793" xyz="0 0 -0.15"/>
+    <origin rpy="1.5707963267948966 0 0" xyz="0 0 -0.1445"/>
     <parent link="Link4"/>
     <child link="Link5"/>
-    <axis xyz="1 0 0"/>
-    <limit effort="1000" lower="-3.14" upper="3.14" velocity="3.0"/>
+    <axis xyz="0 -1 0"/>
+    <limit effort="1000" lower="-6.283185307179586" upper="6.283185307179586" velocity="3.9269908169872414"/>
     <dynamics damping="10.0" friction="1.0"/>
   </joint>
   <gazebo reference="joint5">
@@ -273,14 +278,13 @@
       </geometry>
     </collision>
   </link>
-  <!-- joint6 - flange roll. The flange face is 55 mm along Link6 local +y. -->
-  <!-- TODO(synustech) - verify axis sign on the real arm -->
+  <!-- joint6 - flange roll, axis along DUCO +Y0 at zero (Z6). Tool points along Link6 -y. -->
   <joint name="joint6" type="revolute">
-    <origin rpy="-1.5707963267948966 0 0" xyz="0 0 0.1"/>
+    <origin rpy="-1.5707963267948966 0 0" xyz="0 0 0.121"/>
     <parent link="Link5"/>
     <child link="Link6"/>
-    <axis xyz="0 1 0"/>
-    <limit effort="1000" lower="-3.14" upper="3.14" velocity="3.0"/>
+    <axis xyz="0 -1 0"/>
+    <limit effort="1000" lower="-6.283185307179586" upper="6.283185307179586" velocity="3.9269908169872414"/>
     <dynamics damping="5.0" friction="0.5"/>
   </joint>
   <gazebo reference="joint6">

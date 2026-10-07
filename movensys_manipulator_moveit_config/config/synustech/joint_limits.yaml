@@ -2,41 +2,40 @@
 # Specific joint properties can be changed with the keys [max_position, min_position, max_velocity, max_acceleration]
 # Joint limits can be turned off with [has_velocity_limits, has_acceleration_limits]
 
-# As MoveIt! does not support jerk limits, the acceleration limits provided here are the highest values that guarantee
-# that no jerk limits will be violated. More precisely, applying Euler differentiation in the worst case (from min accel
-# to max accel in 1 ms) the acceleration limits are the ones that satisfy
-# max_jerk = (max_acceleration - min_acceleration) / 0.001
+# DUCO GCR30-1100 (hardware manual, basic parameter table):
+#   max joint velocity  J1 120, J2 120, J3 180, J4-J6 225 deg/s
+# Velocities below are the datasheet values in rad/s. Accelerations are not
+# published by the manufacturer; 2.0 rad/s^2 is a conservative placeholder.
+# TODO(synustech) - tune accelerations once the arm runs on hardware.
 
-# TODO(synustech): replace with datasheet velocity/acceleration limits.
-# Values below are copied from the Dobot CR5A as conservative placeholders.
 joint_limits:
   joint1:
     has_velocity_limits: true
-    max_velocity: 1.0
+    max_velocity: 2.094
     has_acceleration_limits: true
-    max_acceleration: 1.0
+    max_acceleration: 2.0
   joint2:
     has_velocity_limits: true
-    max_velocity: 1.0
+    max_velocity: 2.094
     has_acceleration_limits: true
-    max_acceleration: 1.0
+    max_acceleration: 2.0
   joint3:
     has_velocity_limits: true
-    max_velocity: 1.0
+    max_velocity: 3.142
     has_acceleration_limits: true
-    max_acceleration: 1.0
+    max_acceleration: 2.0
   joint4:
     has_velocity_limits: true
-    max_velocity: 1.0
+    max_velocity: 3.927
     has_acceleration_limits: true
-    max_acceleration: 1.0
+    max_acceleration: 2.0
   joint5:
     has_velocity_limits: true
-    max_velocity: 1.0
+    max_velocity: 3.927
     has_acceleration_limits: true
-    max_acceleration: 1.0
+    max_acceleration: 2.0
   joint6:
     has_velocity_limits: true
-    max_velocity: 1.0
+    max_velocity: 3.927
     has_acceleration_limits: true
-    max_acceleration: 1.0
+    max_acceleration: 2.0

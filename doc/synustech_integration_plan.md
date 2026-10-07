@@ -2,7 +2,7 @@
 
 Status as of 2026-10-06. Branch `feature/add-synuctech-robot-support`.
 
-This document records how the Synustech 6-axis arm is being added as a third
+This document records how the Synustech arm is being added as a third
 manipulator model next to the Dobot CR3A and CR5A, what has been implemented,
 and what is still open. Only the arm is integrated. The mobile base, lidars,
 IMU, and differential drive from the vendor package are out of scope, and so is
@@ -10,16 +10,43 @@ Isaac cuMotion support.
 
 ## 1. Background
 
+### The robot
+
+The arm is a **SIASUN DUCO GCR30-1100** collaborative robot, supplied through
+Synustech. Nameplate: rated load 30 kg, weight 64 kg, arm length 1335 mm,
+IP54, manufactured 2025-04. Data below comes from the DUCO hardware manual
+v4.2 (`ref_files/Docu_related_material/duco-hardware-v4.2-en.pdf`,
+GCR30-1100 chapter 2.16, printed pages 239 to 251) and the GCR series
+brochure.
+
+| Joint | Range | Max velocity |
+|---|---|---|
+| J1 base | ±360° | 120°/s |
+| J2 shoulder | ±360° | 120°/s |
+| J3 elbow | ±160° | 180°/s |
+| J4, J5, J6 wrist | ±360° | 225°/s |
+
+Dimension drawing: base to J2 axis 235 mm, upper arm 496 mm, forearm
+459.5 mm, J4 axis to flange centre 144.5 mm, lateral offset base axis to
+wrist 179.3 mm, wrist to flange face 121 mm. These sum to the 1335 mm arm
+length on the nameplate. Repeatability ±0.05 mm. Rated load CoG offset
+127.9 mm lateral, 148.8 mm axial. Packing posture J3 155°, J4 25°, others 0.
+
+Frame convention (manual Fig. 3-12): zero pose is the arm pointing straight
+up. Z1 vertical, Z2, Z3, Z4 horizontal and parallel, Z5 vertical, Z6
+horizontal along the tool. The shoulder offset and the tool flange point to
+DUCO +Y0. Positive rotation is right-hand about these axes (Fig. 3-13).
+
 ### Source material
 
 Everything vendor-provided lives in the git-ignored `ref_files/` directory:
 
 | Item | Content | Used |
 |---|---|---|
-| `ref_files/synustech_description/` | Gazebo Classic package for the full mobile manipulator | Arm meshes, joint origins, inertials |
-| `ref_files/synustech_description/urdf/assets/j0..j6.stl` | Arm link meshes, millimetres, each in its own joint frame | Yes, renamed `Link0..Link6.STL` |
-| `ref_files/synustech_description/urdf/manipulator.xacro` | Arm links with **all joints fixed** | Origins and inertials only |
-| `ref_files/wmx_parameters_20260305.xml` | WMX3 axis parameter export of the whole robot | Reference for the `wmx-ros2` side |
+| `synustech_description/urdf/assets/j0..j6.stl` | Arm link meshes, millimetres, each in its own joint frame | Yes, renamed `Link0..Link6.STL` |
+| `synustech_description/urdf/manipulator.xacro` | Arm links with **all joints fixed**, rounded link lengths | Joint origins (corrected) and inertials |
+| `wmx_parameters_20260305.xml` | WMX3 axis parameter export of the whole robot | Reference for the `wmx-ros2` side |
+| `Docu_related_material/` | DUCO hardware manual, brochure, nameplate photo | Limits, velocities, dimensions, frame convention |
 | DAE meshes, zip, mobile base, wheels, lidars, EKF, diff drive | Not used | No |
 
 ### How the repo selects a robot
@@ -38,26 +65,21 @@ client yaml, teleop nodes, sim bridge, and WMX configs:
 The Synustech model follows this convention, so no C++ or launch code changed.
 The gripper-less Dobot CR5A was used as the template.
 
-### Geometry derived from the reference
+### Mesh geometry findings
 
-Forward kinematics of the fixed reference chain, relative to the arm mount:
-
-| Frame | Position x, y, z (m) | Role |
-|---|---|---|
-| Link0 | 0, 0, 0 | base, 141 mm tall |
-| Link1 | 0, 0, 0.23 | joint1, vertical |
-| Link2 | 0, 0.175, 0.23 | shoulder, lateral offset |
-| Link3 | 0, 0.175, 0.73 | elbow, upper arm 0.5 m |
-| Link4 | 0.46, 0.175, 0.73 | forearm 0.46 m |
-| Link5 | 0.46, 0.175, 0.58 | wrist, 0.15 m drop |
-| Link6 | 0.46, 0.075, 0.58 | flange, tool along local +y, 55 mm |
-
-Reach from the shoulder is about 0.96 m. Total arm mass from the CAD inertials
-is 61.4 kg, with a 25.9 kg upper arm.
-
-The meshes are authored with local **−y pointing up**, unlike the Dobot
-`Link0` which has +z up. The mount joint therefore carries a −π/2 roll in
-addition to the CR3A position and yaw.
+- The meshes are authored with local **−y pointing up**, unlike the Dobot
+  `Link0` which has +z up. The mount joint therefore carries a −π/2 roll in
+  addition to the CR3A position and yaw.
+- Every joint module in the meshes is a cylinder whose axis is the link's
+  local y. All six URDF joint axes are therefore local y.
+- The vendor xacro was authored in a bent pose (upper arm vertical, forearm
+  horizontal, wrist rotated). The fixed pitch and roll of joints 3 to 5 were
+  changed so the URDF zero is the DUCO straight-up zero. The meshes are
+  unchanged.
+- The vendor link lengths were rounded (230, 500, 460, 150, 175, 100 mm).
+  The URDF uses the manual values. The 121 mm flange offset also makes the
+  Link5 and Link6 meshes meet exactly where the vendor's 100 mm left a 20 mm
+  overlap. Other joints may show seams of up to 5 mm.
 
 ### Findings from the WMX parameter export
 
@@ -71,7 +93,7 @@ addition to the CR3A position and yaw.
   per joint, and `EStopDec` rescaled to match.
 - Polarity on arm axes 2 to 7 is −1, −1, +1, −1, −1, −1.
 - `AbsoluteEncoderHomeOffset` is nonzero on all six arm axes, so the arm has
-  been zeroed in WMX. The physical pose that zero corresponds to is not
+  been zeroed in WMX. Whether that zero is the DUCO straight-up pose is not
   documented.
 - Soft limits, following error checks, limit switches, and the E-stop signal
   are all disabled. Torque limit 300 percent, max motor speed 3000 rpm.
@@ -89,24 +111,26 @@ New directory `movensys_manipulator_description/urdf/synustech/`:
 
 | File | Content |
 |---|---|
-| `synustech.xacro` | Macro `synustech(joint_vel, joint_effort)`. Seven links with reference inertials, STL visual and collision meshes at scale 0.001. Six `revolute` joints with reference origins written as `${pi/2}` and `${pi}`, proposed axes, placeholder limits ±3.14 rad, damping and friction, `implicitSpringDamper` tags. |
-| `movensys_manipulator.xacro` | Root `world_manipulator`, CR3A stage, `robot_joint` with the CR3A offset `xyz -0.03 0.275 0.05`, `rpy -π/2 0 -1.57`, then the arm macro. No gripper. |
-| `stage.xacro` | Copied from CR3A. Table mesh and Jetson box. Table STL is referenced from `urdf/dobot_cr3a/assets/` to avoid duplicating it. |
+| `synustech.xacro` | Macro `synustech(joint_vel, joint_effort)`. Seven links with reference inertials, STL visual and collision meshes at scale 0.001. Six `revolute` joints, all axes `0 -1 0`, manual link lengths, DUCO zero pose, manual ranges and per-joint velocity caps, damping and friction, `implicitSpringDamper` tags. |
+| `movensys_manipulator.xacro` | Root `world_manipulator`, CR3A stage, `robot_joint` with the CR3A offset `xyz -0.03 0.275 0.05`, `rpy -π/2 0 -1.57`, then the arm macro with `joint_vel 4.0` so the datasheet caps apply. No gripper. |
+| `stage.xacro` | Copied from CR3A. Table mesh and Jetson box. Table STL is referenced from `urdf/dobot_cr3a/assets/`. |
 | `control.xacro`, `transmission.xacro`, `movensys_manipulator.gazebo.xacro` | Copied from CR5A, paths changed to `synustech`. Joints `joint1` to `joint6`, no picker joints. |
 | `control.yaml` | Gazebo PID gains raised to roughly ten times the Dobot values for the heavier arm. Marked TODO, to be tuned in Gazebo. |
 | `movensys_manipulator.urdf` | Static URDF generated with xacro, for parity with the other models. |
 | `assets/Link0.STL` to `Link6.STL` | Reference meshes `j0` to `j6`, renamed. 2.4 MB total. |
 
-Proposed joint axes, inferred from mesh geometry and marked TODO in the xacro:
+Joint definitions as implemented:
 
-| Joint | Parent to child | Origin | Axis (local) | Direction in world at zero |
-|---|---|---|---|---|
-| joint1 | Link0 to Link1 | `0 -0.23 0` | `0 -1 0` | vertical |
-| joint2 | Link1 to Link2 | `0 0 0.175`, rpy `-π/2 0 -π/2` | `0 -1 0` | horizontal, shoulder pitch |
-| joint3 | Link2 to Link3 | `0.5 0 0`, rpy `0 -π/2 0` | `0 -1 0` | horizontal, elbow pitch |
-| joint4 | Link3 to Link4 | `0.46 0 0`, rpy `0 π 0` | `0 0 1` | vertical, wrist roll |
-| joint5 | Link4 to Link5 | `0 0 -0.15`, rpy `π/2 0 π` | `1 0 0` | along forearm, wrist pitch |
-| joint6 | Link5 to Link6 | `0 0 0.1`, rpy `-π/2 0 0` | `0 1 0` | flange axis |
+| Joint | Parent to child | Origin xyz (m) | Origin rpy | Axis | DUCO axis at zero |
+|---|---|---|---|---|---|
+| joint1 | Link0 to Link1 | `0 -0.235 0` | `0 0 0` | `0 -1 0` | Z1, up |
+| joint2 | Link1 to Link2 | `0 0 0.1793` | `-π/2 0 -π/2` | `0 -1 0` | Z2, +Y0 |
+| joint3 | Link2 to Link3 | `0.496 0 0` | `0 0 0` | `0 -1 0` | Z3, +Y0 |
+| joint4 | Link3 to Link4 | `0.4595 0 0` | `0 -π/2 0` | `0 -1 0` | Z4, +Y0 |
+| joint5 | Link4 to Link5 | `0 0 -0.1445` | `π/2 0 0` | `0 -1 0` | Z5, up |
+| joint6 | Link5 to Link6 | `0 0 0.121` | `-π/2 0 0` | `0 -1 0` | Z6, +Y0 |
+
+The `Link6` origin is the flange face. The tool points along `Link6` −y.
 
 ### MoveIt config
 
@@ -116,9 +140,9 @@ files copied from CR5A:
 | File | Change |
 |---|---|
 | `movensys_manipulator.urdf.xacro` | Includes `urdf/synustech/movensys_manipulator.xacro` |
-| `movensys_manipulator.srdf` | Chain `Link0` to `Link6`. Group states `initial`, `zero`, `test` all zero for now. Collision matrix rebuilt for `table`, `jetson_thor`, `Link0` to `Link6`. |
-| `joint_limits.yaml` | CR5A values kept as placeholders, 1.0 rad/s and 1.0 rad/s². TODO comment added. |
-| `initial_positions.yaml` | All zero. TODO comment added. |
+| `movensys_manipulator.srdf` | Chain `Link0` to `Link6`. Group states `initial`, `zero`, `test` all zero for now, which is the DUCO straight-up pose. Collision matrix rebuilt for `table`, `jetson_thor`, `Link0` to `Link6`. |
+| `joint_limits.yaml` | Datasheet velocities 2.094, 2.094, 3.142, 3.927, 3.927, 3.927 rad/s. Acceleration 2.0 rad/s² placeholder. |
+| `initial_positions.yaml` | All zero. |
 | `trajectory.yaml` | Waypoints moved into this arm's workspace, about 0.45 m in front of the base at 0.6 m height, tool pointing down. |
 | `kinematics.yaml`, `moveit_controllers.yaml`, `moveit2_client.yaml`, `sim_bridge.yaml`, `servo.yaml`, `pilz_cartesian_limits.yaml`, `movensys_manipulator_arm.ros2_control.xacro` | Unchanged from CR5A. Frames `world_manipulator` and `Link6` and all topics already match. |
 
@@ -136,13 +160,14 @@ files copied from CR5A:
 - `xacro` and `check_urdf` pass on `movensys_manipulator.xacro`,
   `movensys_manipulator.gazebo.xacro`, and the MoveIt
   `movensys_manipulator.urdf.xacro`.
-- Forward kinematics on the generated URDF confirms the arm stands upright,
-  joint1 is vertical, joints 2 and 3 are parallel and horizontal, and joints 4,
-  5, 6 are mutually perpendicular.
+- Forward kinematics on the generated URDF at zero gives the flange centre at
+  Y0 300.3 mm, Z0 1335 mm in DUCO base coordinates, and every joint axis
+  pointing as in manual Fig. 3-12.
 - `MoveItConfigsBuilder` loads the synustech config the same way
   `moveit.launch.py` does. All yaml files parse.
 - `movensys_manipulator_rviz.launch.py` runs with `MANIPULATOR_MODEL=synustech`
-  from a scratch build and publishes every link. The robot is visible in RViz.
+  from a scratch build and publishes every link. The robot is visible in RViz
+  and follows the joint state sliders.
 - Gazebo was not tested. No Gazebo install is available on the development
   host, so that step has to run in the container.
 
@@ -162,40 +187,38 @@ which must print 0.
 
 | # | Item | Blocks | Source |
 |---|---|---|---|
-| 1 | Joint axis directions and signs for all six joints | URDF correctness, everything downstream | Verify the proposed axes against the real arm in RViz, or the datasheet |
-| 2 | Joint position limits | URDF `limit`, `joint_limits.yaml`, servo margins | Datasheet |
-| 3 | Joint velocity and acceleration limits | `joint_limits.yaml`, servo, WMX `max_joint_velocity` | Datasheet |
-| 4 | Reducer ratio per joint | WMX parameter file gear ratios, real and HIL modes | Datasheet, drive part numbers, or measured by jogging a known angle |
-| 5 | Physical pose at WMX encoder zero | URDF zero pose, or `AbsoluteEncoderHomeOffset` | Whoever calibrated the arm for the 2026-03-05 export |
-| 6 | Whether the EtherCAT chain keeps the base drives on axes 0 and 1 | `joint_axes` mapping | Cell wiring |
+| 1 | Confirmation of the positive direction of each joint | Sign of each `axis` in `synustech.xacro`, WMX polarity | Jog the real arm one joint at a time and compare with RViz |
+| 2 | Reducer ratio per joint | WMX parameter file gear ratios, real and HIL modes | Datasheet, drive part numbers, or measured by jogging a known angle |
+| 3 | Physical pose at WMX encoder zero | `AbsoluteEncoderHomeOffset`, or an offset in the URDF | Whoever calibrated the arm for the 2026-03-05 export. Expected to be the DUCO straight-up zero. |
+| 4 | Joint acceleration limits | `joint_limits.yaml`, servo | Not published by DUCO. Tune on hardware. |
+| 5 | Whether the EtherCAT chain keeps the base drives on axes 0 and 1 | `joint_axes` mapping | Cell wiring |
 
 ### Work remaining in this repo
 
-1. **Axis verification in RViz.** Launch
+1. **Sign verification in RViz.** Launch
    `movensys_manipulator_rviz.launch.py` with `MANIPULATOR_MODEL=synustech`,
-   move each slider, compare against the real arm, and flip signs in
-   `synustech.xacro` where needed. Remove the TODO markers once done.
-2. **Fill in limits.** Replace the ±3.14 placeholders in `synustech.xacro`
-   and the CR5A values in `joint_limits.yaml` with datasheet numbers.
-3. **Record group states.** Set `initial` and `test` in the SRDF and
-   `initial_positions.yaml` to real poses, and update `trajectory.yaml`
-   waypoints accordingly.
-4. **Collision matrix check.** Confirm in RViz that `Link1` against `Link3`
+   move each slider in the positive direction, compare against the real arm
+   jogged positive, and flip `axis` signs in `synustech.xacro` where needed.
+   Also check the mesh seams at each joint are small.
+2. **Record group states.** Set `initial` and `test` in the SRDF and
+   `initial_positions.yaml` to useful working poses. The straight-up zero is
+   safe but not a good start pose for planning.
+3. **Collision matrix check.** Confirm in RViz that `Link1` against `Link3`
    and `Link2` against `Link4` really never touch across the joint range;
    otherwise remove those `Never` rows.
-5. **Full build in the container** with `colcon build`. The current install
+4. **Full build in the container** with `colcon build`. The current install
    is a plain copy from August and does not contain the new folders.
-6. **Gazebo tuning.** Run `gazebo_trajectory_simulation.launch.py` and tune
+5. **Gazebo tuning.** Run `gazebo_trajectory_simulation.launch.py` and tune
    the PID gains in `control.yaml` until the arm holds pose without
    oscillation.
-7. **MoveIt execution test.** `moveit.launch.py` with the sim bridge, then
+6. **MoveIt execution test.** `moveit.launch.py` with the sim bridge, then
    `trajectory_test.launch.py`. Confirm OMPL and Pilz plan and execute.
-8. **Commit** the description, MoveIt config, workflow, README, and doc
+7. **Commit** the description, MoveIt config, workflow, README, and doc
    changes, and open the PR.
 
 ### Work remaining in `wmx-ros2` (separate repo and PR)
 
-Blocked on items 4 and 5 above.
+Blocked on items 2 and 3 above.
 
 1. `wmx_r2_control/urdf/synustech.wmx.urdf.xacro`, including
    `urdf/synustech/movensys_manipulator.xacro` from this repo.
@@ -204,12 +227,13 @@ Blocked on items 4 and 5 above.
 3. `wmx_r2_control/config/synustech_controllers.yaml` and a launch file,
    copied from the CR5A ones.
 4. `wmx_r2_package/config/synustech_manipulator_config.yaml` with
-   `joint_axes: [2, 3, 4, 5, 6, 7]` in all four controller blocks.
+   `joint_axes: [2, 3, 4, 5, 6, 7]` in all four controller blocks, and
+   `max_joint_velocity` set from the datasheet.
 5. `wmx_r2_package/config/synustech_wmx_parameters.xml` from
    `ref_files/wmx_parameters_20260305.xml`, with arm axes 2 to 7 set to
    numerator 524288 × reducer and denominator 2π, `EStopDec` rescaled, soft
-   limits enabled, and `AbsoluteEncoderHomeOffset` checked for units after the
-   gear ratio change.
+   limits enabled at the manual ranges, and `AbsoluteEncoderHomeOffset`
+   checked for units after the gear ratio change.
 6. First import with the `ImportAndSetAll` error structs inspected before
    servo-on, since the export comes from an older WMX3 build.
 7. HIL run, then real run with `vel_scale` and `acc_scale` in
@@ -224,6 +248,10 @@ Blocked on items 4 and 5 above.
   of scope for this model.
 - The CR3A stage and mount offset are reused so the arm can be compared with
   the CR3A in the same cell layout.
-- The mesh authored pose is the URDF zero pose until the encoder zero pose is
-  known. Reconciliation will be done through the WMX home offset, not by
-  rotating the URDF frames.
+- URDF zero is the DUCO straight-up zero, not the vendor mesh pose, so the
+  manual's joint ranges apply directly and the WMX zero is expected to match.
+- Link lengths follow the manual drawing rather than the vendor meshes.
+  Kinematic accuracy against the real robot was preferred over seamless
+  meshes.
+- `Link6` is the tool frame with the flange face at its origin, as on the
+  Dobots. No separate `tcp` link.
