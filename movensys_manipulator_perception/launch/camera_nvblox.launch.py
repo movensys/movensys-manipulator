@@ -2,13 +2,17 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
-from launch.conditions import IfCondition, UnlessCondition
+from launch.actions import DeclareLaunchArgument, GroupAction
+from launch.conditions import IfCondition, LaunchConfigurationEquals, UnlessCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
 def generate_launch_description() -> LaunchDescription:
+    num_cameras_arg = DeclareLaunchArgument(
+        'num_cameras', default_value='2', choices=['1', '2'],
+        description='Use camera_0 only (1), or camera_0 and camera_1 (2).'
+    )
     use_sim_time_arg = DeclareLaunchArgument(
         "use_sim_time", default_value="false",
         description="Use simulation clock (/clock)"
@@ -18,18 +22,18 @@ def generate_launch_description() -> LaunchDescription:
         description="Publish static camera TF. Set false while tuning camera TF with GUI."
     )
     camera_tf_args = [
-        DeclareLaunchArgument("camera_0_x", default_value="-0.402"),
-        DeclareLaunchArgument("camera_0_y", default_value="-0.149"),
-        DeclareLaunchArgument("camera_0_z", default_value="0.947"),
-        DeclareLaunchArgument("camera_0_roll", default_value="-0.076"),
-        DeclareLaunchArgument("camera_0_pitch", default_value="1.017"),
-        DeclareLaunchArgument("camera_0_yaw", default_value="0.696"),
-        DeclareLaunchArgument("camera_1_x", default_value="0.417"),
-        DeclareLaunchArgument("camera_1_y", default_value="-0.255"),
-        DeclareLaunchArgument("camera_1_z", default_value="0.879"),
-        DeclareLaunchArgument("camera_1_roll", default_value="0.074"),
-        DeclareLaunchArgument("camera_1_pitch", default_value="0.867"),
-        DeclareLaunchArgument("camera_1_yaw", default_value="2.402"),
+        DeclareLaunchArgument("camera_0_x", default_value="-1.194"),
+        DeclareLaunchArgument("camera_0_y", default_value="-0.264"),
+        DeclareLaunchArgument("camera_0_z", default_value="0.863"),
+        DeclareLaunchArgument("camera_0_roll", default_value="0.127"),
+        DeclareLaunchArgument("camera_0_pitch", default_value="0.460"),
+        DeclareLaunchArgument("camera_0_yaw", default_value="0.487"),
+        DeclareLaunchArgument("camera_1_x", default_value="-0.117"),
+        DeclareLaunchArgument("camera_1_y", default_value="-1.462"),
+        DeclareLaunchArgument("camera_1_z", default_value="0.791"),
+        DeclareLaunchArgument("camera_1_roll", default_value="0.024"),
+        DeclareLaunchArgument("camera_1_pitch", default_value="0.344"),
+        DeclareLaunchArgument("camera_1_yaw", default_value="1.753"),
     ]
 
     pkg_share = get_package_share_directory('movensys_manipulator_perception')
@@ -108,11 +112,14 @@ def generate_launch_description() -> LaunchDescription:
     )
 
     return LaunchDescription([
+        num_cameras_arg,
         use_sim_time_arg,
         publish_camera_tf_arg,
         *camera_tf_args,
         camera_nvblox_0_node,
-        camera_nvblox_1_node,
         start_camera_0_nvblox_transform,
-        start_camera_1_nvblox_transform,
+        GroupAction(
+            condition=LaunchConfigurationEquals('num_cameras', '2'),
+            actions=[camera_nvblox_1_node, start_camera_1_nvblox_transform],
+        ),
     ])

@@ -198,6 +198,13 @@ ament_target_dependencies(trajectory_test
   std_srvs
 )
 
+add_executable(joint_demo src/joint_demo.cpp)
+ament_target_dependencies(joint_demo
+  rclcpp
+  moveit_ros_planning_interface
+  moveit_msgs
+)
+
 add_executable(coverage_pose src/coverage_pose.cpp)
 target_link_libraries(coverage_pose moveit2_client_lib)
 ament_target_dependencies(coverage_pose
@@ -260,6 +267,7 @@ rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typ
 target_link_libraries(moveit2_api ${cpp_typesupport_target})
 
 install(TARGETS
+  joint_demo
   trajectory_test
   coverage_pose
   obstacle_avoidance_cpp

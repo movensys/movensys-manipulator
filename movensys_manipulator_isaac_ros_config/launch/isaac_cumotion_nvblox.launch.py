@@ -12,24 +12,28 @@ from launch_ros.actions import Node
 def generate_launch_description():
     use_sim_time = LaunchConfiguration("use_sim_time")
     camera_tf_arg_defaults = {
-        "camera_0_x": "-0.402",
-        "camera_0_y": "-0.149",
-        "camera_0_z": "0.947",
-        "camera_0_roll": "-0.076",
-        "camera_0_pitch": "1.017",
-        "camera_0_yaw": "0.696",
-        "camera_1_x": "0.417",
-        "camera_1_y": "-0.255",
-        "camera_1_z": "0.879",
-        "camera_1_roll": "0.074",
-        "camera_1_pitch": "0.867",
-        "camera_1_yaw": "2.402",
+        "camera_0_x": "-1.194",
+        "camera_0_y": "-0.264",
+        "camera_0_z": "0.863",
+        "camera_0_roll": "0.127",
+        "camera_0_pitch": "0.460",
+        "camera_0_yaw": "0.487",
+        "camera_1_x": "-0.117",
+        "camera_1_y": "-1.462",
+        "camera_1_z": "0.791",
+        "camera_1_roll": "0.024",
+        "camera_1_pitch": "0.344",
+        "camera_1_yaw": "1.753",
     }
 
     declare_use_sim_time = DeclareLaunchArgument(
         "use_sim_time",
         default_value="false",
         description="Use simulation clock (/clock)"
+    )
+    declare_num_cameras = DeclareLaunchArgument(
+        'num_cameras', default_value='2', choices=['1', '2'],
+        description='Use camera_0 only (1), or camera_0 and camera_1 (2).'
     )
 
     declare_rsp = DeclareLaunchArgument(
@@ -82,6 +86,7 @@ def generate_launch_description():
         launch_arguments={
             'use_sim_time': use_sim_time,
             'publish_camera_tf': LaunchConfiguration('publish_camera_tf'),
+            'num_cameras': LaunchConfiguration('num_cameras'),
             **{
                 name: LaunchConfiguration(name)
                 for name in camera_tf_arg_defaults
@@ -107,7 +112,10 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(
             os.path.join(pkg_movensys_isaac_ros_config, 'launch', 'isaac_nvblox.launch.py')
         ),
-        launch_arguments={'use_sim_time': use_sim_time}.items()
+        launch_arguments={
+            'use_sim_time': use_sim_time,
+            'num_cameras': LaunchConfiguration('num_cameras'),
+        }.items()
     )
 
     nvblox_planning_scene_bridge = Node(
@@ -127,13 +135,14 @@ def generate_launch_description():
             'update_esdf': True,
             'visualize_esdf': False,
             'max_occupied_voxels': 20000,
-            'aabb_min_m': [-1.0, -1.0, -0.1],
-            'aabb_size_m': [2.0, 2.0, 1.5],
+            'aabb_min_m': [-1.26, -1.26, -0.1],
+            'aabb_size_m': [2.52, 2.52, 1.5],
         }],
     )
 
     return LaunchDescription([
         declare_use_sim_time,
+        declare_num_cameras,
         declare_rsp,
         declare_publish_camera_tf,
         declare_enable_hybrid_planning,

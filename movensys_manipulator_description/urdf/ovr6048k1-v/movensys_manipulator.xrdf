@@ -49,39 +49,45 @@ geometry:
   auto_generated_collision_sphere_group:
     spheres:
       Link0:
-        - center: [0.0, -0.0, -0.037]
+        - center: [0.0, 0.0, -0.037]
           radius: 0.0395
         - center: [-0.001, -0.001, 0.03]
           radius: 0.0379
-        - center: [0.0, -0.0, 0.117]
+        - center: [0.0, 0.0, 0.117]
           radius: 0.0395
       Link1:
-        - center: [-0.049, -0.001, -0.075]
+        - center: [0.001, -0.001, -0.016]
+          radius: 0.035
+        - center: [-0.159, -0.002, -0.075]
           radius: 0.0391
-        - center: [-0.132, 0.001, -0.075]
-          radius: 0.0391
+        - center: [-0.069, -0.001, -0.075]
+          radius: 0.05
       Link2:
-        - center: [0.151, -0.001, -0.026]
+        - center: [0.151, -0.001, -0.01]
           radius: 0.03
-        - center: [0.237, 0.005, 0.122]
+        - center: [0.237, 0.003, 0.122]
           radius: 0.036
-        - center: [0.05, 0.002, -0.01]
+        - center: [0.079, 0.002, -0.026]
           radius: 0.0383
-        - center: [0.238, -0.031, 0.011]
-          radius: 0.0254
+        - center: [0.24, -0.006, 0.023]
+          radius: 0.044
+        - center: [0.002, 0.002, -0.012]
+          radius: 0.03
       Link3:
-        - center: [0.131, 0.001, 0.029]
-          radius: 0.0231
+        - center: [0.142, 0.006, -0.001]
+          radius: 0.04
         - center: [0.005, 0.005, -0.011]
           radius: 0.04
-        - center: [0.135, -0.013, -0.04]
-          radius: 0.03
+        - center: [0.06, 0.006, -0.006]
+          radius: 0.035
       Link4:
-        - center: [0.053, 0.002, -0.036]
+        - center: [0.085, -0.008, -0.036]
           radius: 0.0322
+        - center: [0.022, 0.002, -0.011]
+          radius: 0.03
       Link5:
-        - center: [0.025, -0.0, -0.034]
+        - center: [0.025, 0.0, -0.026]
           radius: 0.0339
       Link6:
-        - center: [-0.009, -0.006, -0.004]
-          radius: 0.0158
+        - center: [-0.003, -0.003, 0.008]
+          radius: 0.0375

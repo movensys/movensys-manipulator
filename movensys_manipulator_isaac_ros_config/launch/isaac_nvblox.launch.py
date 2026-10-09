@@ -2,20 +2,15 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import ComposableNodeContainer, LoadComposableNodes, Node
 from launch_ros.descriptions import ComposableNode
 
 
-def generate_launch_description():
+def launch_setup(context):
     use_sim_time = LaunchConfiguration("use_sim_time")
-
-    declare_use_sim_time = DeclareLaunchArgument(
-        "use_sim_time",
-        default_value="false",
-        description="Use simulation clock (/clock)"
-    )
+    num_cameras = int(LaunchConfiguration('num_cameras').perform(context))
 
     pkg_movensys_isaac_ros_config = get_package_share_directory(
         'movensys_manipulator_isaac_ros_config')
@@ -48,20 +43,19 @@ def generate_launch_description():
         package='nvblox_ros',
         plugin='nvblox::NvbloxNode',
         remappings=[
-            ('/camera_0/color/image', '/image_nvblox_0/rgb'),
-            ('/camera_0/color/camera_info', '/image_nvblox_0/camera_info'),
-            ('/camera_0/depth/image', '/robot_segmenter/world_depth_0'),
-            ('/camera_0/depth/camera_info', '/image_nvblox_0/camera_info'),
-
-            ('/camera_1/color/image', '/image_nvblox_1/rgb'),
-            ('/camera_1/color/camera_info', '/image_nvblox_1/camera_info'),
-            ('/camera_1/depth/image', '/robot_segmenter/world_depth_1'),
-            ('/camera_1/depth/camera_info', '/image_nvblox_1/camera_info'),
+            remapping
+            for i in range(num_cameras)
+            for remapping in [
+                (f'/camera_{i}/color/image', f'/image_nvblox_{i}/rgb'),
+                (f'/camera_{i}/color/camera_info', f'/image_nvblox_{i}/camera_info'),
+                (f'/camera_{i}/depth/image', f'/robot_segmenter/world_depth_{i}'),
+                (f'/camera_{i}/depth/camera_info', f'/image_nvblox_{i}/camera_info'),
+            ]
         ],
         parameters=[
             nvblox_base_config,
             workspace_config,
-            {'num_cameras': 2},
+            {'num_cameras': num_cameras},
             {'use_sim_time': use_sim_time},
         ]
     )
@@ -85,6 +79,19 @@ def generate_launch_description():
                 'robot': robot_xrdf,
                 'urdf_path': urdf_path,
                 'use_sim_time': use_sim_time,
+                'num_cameras': num_cameras,
+                'depth_image_topics': [
+                    f'/image_nvblox_{i}/depth' for i in range(num_cameras)
+                ],
+                'depth_camera_infos': [
+                    f'/image_nvblox_{i}/camera_info' for i in range(num_cameras)
+                ],
+                'robot_mask_publish_topics': [
+                    f'/robot_segmenter/robot_mask_{i}' for i in range(num_cameras)
+                ],
+                'world_depth_publish_topics': [
+                    f'/robot_segmenter/world_depth_{i}' for i in range(num_cameras)
+                ],
             }
         ]
     )
@@ -92,7 +99,6 @@ def generate_launch_description():
     ros_distro = os.environ.get('ROS_DISTRO', 'humble')
 
     nodes = [
-        declare_use_sim_time,
         manipulation_container,
         robot_segmenter,
         load_nvblox,
@@ -114,4 +120,18 @@ def generate_launch_description():
         )
         nodes.append(static_planning_scene)
 
-    return LaunchDescription(nodes)
+    return nodes
+
+
+def generate_launch_description():
+    return LaunchDescription([
+        DeclareLaunchArgument(
+            'use_sim_time', default_value='false',
+            description='Use simulation clock (/clock)'
+        ),
+        DeclareLaunchArgument(
+            'num_cameras', default_value='2', choices=['1', '2'],
+            description='Use camera_0 only (1), or camera_0 and camera_1 (2).'
+        ),
+        OpaqueFunction(function=launch_setup),
+    ])

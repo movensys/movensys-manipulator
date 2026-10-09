@@ -44,34 +44,36 @@ public:
     action_name_ = declare_parameter<std::string>("action_name", "/run_hybrid_planning");
     planning_group_ = declare_parameter<std::string>("planning_group", "movensys_manipulator_arm");
     pipeline_id_ = declare_parameter<std::string>("pipeline_id", "isaac_ros_cumotion");
-    allowed_planning_time_ = declare_parameter<double>("allowed_planning_time", 5.0);
+    allowed_planning_time_ = declare_parameter<double>("allowed_planning_time", 10.0);
     velocity_scaling_ = declare_parameter<double>("max_velocity_scaling_factor", 0.4);
     acceleration_scaling_ = declare_parameter<double>("max_acceleration_scaling_factor", 0.4);
     tolerance_ = declare_parameter<double>("joint_tolerance", 0.01);
     reach_tolerance_ = declare_parameter<double>("goal_reached_tolerance", tolerance_);
     wait_after_reach_seconds_ = declare_parameter<double>("wait_after_reach_seconds", 1.0);
-    retry_delay_seconds_ = declare_parameter<double>("retry_delay_seconds", 5.0);
+    retry_delay_seconds_ = declare_parameter<double>("retry_delay_seconds", 8.0);
     goal_response_timeout_seconds_ = declare_parameter<double>("goal_response_timeout_seconds", 2.0);
     result_timeout_seconds_ = declare_parameter<double>("result_timeout_seconds", 60.0);
     reach_timeout_seconds_ = declare_parameter<double>("reach_timeout_seconds", 3.0);
     monitor_period_seconds_ = declare_parameter<double>("monitor_period_seconds", 0.1);
     joint_state_topic_ = declare_parameter<std::string>("joint_state_topic", "/joint_states");
 
+    // OVR6048K1-V joint-state targets (joint1..joint6, radians).
+    // Pose A: 2026-09-17 14:02:02; pose B: 2026-09-17 14:03:21.
     const std::array<double, kJointCount> default_pose_a = {
-      -0.6173796057701111,
-      -0.44901999831199646,
-      -0.3376253545284271,
-      -0.7845771908760071,
-      1.5694209337234497,
-      -0.6163911819458008,
+      1.7334610130807682,
+      -0.6859667559113313,
+      -1.0995260128298916,
+      -1.1814147669383632,
+      1.4626878403995647,
+      0.8324215222363803,
     };
     const std::array<double, kJointCount> default_pose_b = {
-      1.246348261833191,
-      -0.5102301239967346,
-      -0.23093771934509277,
-      -0.830804169178009,
-      1.57161545753479,
-      1.2473478317260742,
+      -0.3079284399293596,
+      -0.8512647949726119,
+      -1.1575009636592377,
+      -1.1897462706556834,
+      1.4333453650150358,
+      1.063152653086629,
     };
 
     joint_names_ = declare_parameter<std::vector<std::string>>(

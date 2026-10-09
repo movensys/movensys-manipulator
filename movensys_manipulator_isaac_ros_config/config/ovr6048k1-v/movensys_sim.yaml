@@ -1,0 +1,19 @@
+# If you want to check definition, check below link.
+# https://nvidia-isaac-ros.github.io/v/release-4.1/repositories_and_packages/isaac_ros_nvblox/isaac_ros_nvblox/api/parameters.html
+
+# /** is for code-reusability
+# when we set a certain node name to /** part like /nvblox_node, 
+# this config can be only used for the node.
+/**:
+  ros__parameters:
+
+    static_mapper:
+      # Workspace bounding box for movensys manipulator
+      # Adjust these values based on your robot's workspace
+      workspace_bounds_type: "bounding_box"
+      workspace_bounds_min_corner_x_m: -0.63
+      workspace_bounds_min_corner_y_m: -0.504
+      workspace_bounds_min_height_m: 0.0
+      workspace_bounds_max_corner_x_m: 0.63
+      workspace_bounds_max_corner_y_m: 0.504
+      workspace_bounds_max_height_m: 0.7

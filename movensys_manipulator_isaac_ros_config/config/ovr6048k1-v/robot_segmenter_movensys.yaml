@@ -1,0 +1,45 @@
+# https://nvidia-isaac-ros.github.io/v/release-4.1/repositories_and_packages/isaac_ros_cumotion/isaac_ros_cumotion/index.html#robot-segmentation-quickstart
+# Robot segmenter configuration for movensys manipulator with Isaac Sim
+# This matches the format used by the official isaac_ros_cumotion package
+robot_segmenter_node:
+  ros__parameters:
+    # Robot description files
+    robot: ""
+    urdf_path: ""
+
+    num_cameras: 2
+
+    # Input topics
+    depth_image_topics:
+      - /image_nvblox_0/depth
+      - /image_nvblox_1/depth
+    depth_camera_infos:
+      - /image_nvblox_0/camera_info
+      - /image_nvblox_1/camera_info
+
+    # Output topics
+    # Actual published topics match configured names (no _ros suffix added)
+    robot_mask_publish_topics:
+      - /robot_segmenter/robot_mask_0
+      - /robot_segmenter/robot_mask_1
+    world_depth_publish_topics:
+      - /robot_segmenter/world_depth_0
+      - /robot_segmenter/world_depth_1
+
+    joint_states_topic: /joint_states
+
+    debug_robot_topic: /robot_segmenter/robot_spheres
+
+    distance_threshold: 0.1    # Maximum distance from a given collision sphere (in meters) at which to mask points
+
+    time_sync_slop: 1.0 
+    tf_lookup_duration: 5.0 
+
+    depth_qos: SENSOR_DATA      # Isaac Sim publishes BEST_EFFORT; RELIABLE subscriber is incompatible
+    depth_info_qos: SENSOR_DATA
+    mask_qos: SYSTEM_DEFAULT
+    world_depth_qos: SYSTEM_DEFAULT
+
+    cuda_device: 0
+
+    log_debug: false

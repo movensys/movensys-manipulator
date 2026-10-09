@@ -86,6 +86,19 @@ def launch_setup(context, *args, **kwargs):
     if global_planning_pipeline in moveit_config_dict:
         planning_pipeline_config[global_planning_pipeline] = moveit_config_dict[
             global_planning_pipeline]
+ 
+    # MoveItCpp also initializes trajectory execution in the global planner.
+    # Forward the controller configuration supplied by the parent launch.
+    controller_config = {
+        key: moveit_config_dict[key]
+        for key in (
+            "moveit_controller_manager",
+            "moveit_simple_controller_manager",
+            "moveit_manage_controllers",
+            "trajectory_execution",
+        )
+        if key in moveit_config_dict
+    }
 
     return [
         ComposableNodeContainer(
@@ -106,6 +119,7 @@ def launch_setup(context, *args, **kwargs):
                         kinematics_yaml,
                         robot_description_planning,
                         planning_pipeline_config,
+                        controller_config,
                         {"use_sim_time": use_sim_time},
                     ],
                 ),

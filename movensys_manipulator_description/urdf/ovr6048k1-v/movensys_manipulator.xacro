@@ -2,6 +2,14 @@
 <!-- Generated using onshape-to-robot -->
 <!-- Onshape https://cad.onshape.com/documents/8467518fc311e7a9e25b0f7c/w/190c9a2e383e98b459766c2c/e/7359164a76e76e0ebae21425 -->
 <robot name="movensys_manipulator" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:include filename="$(find movensys_manipulator_description)/urdf/dobot_cr3a/stage.xacro" />
+  <xacro:stage />
+  <!-- Shared stage in the workspace frame. -->
+  <joint name="world_manipulator_to_table" type="fixed">
+    <parent link="world_manipulator"/>
+    <child link="table"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
   <link name="world"/>
   <joint name="world_joint" type="fixed">
     <parent link="world"/>
@@ -224,10 +232,13 @@
     <axis xyz="0 0 1"/>
     <limit effort="10" velocity="0.5" lower="-2.96705972839036" upper="2.96705972839036"/>
   </joint>
-  <!-- Compatibility frame; the supplied world transform is unchanged. -->
+  <!-- Mount at the CR3A stage XY location, preserving the OVR orientation.
+       Table top: z=0.04312 m. Rotated Link0 mesh bottom: z=-0.03200 m.
+       A 0.0752 m lift places the base just above the table surface. -->
   <link name="world_manipulator"/>
   <joint name="world_manipulator_to_world" type="fixed">
     <parent link="world_manipulator"/><child link="world"/>
+    <origin xyz="-0.03 0.275 0.0752" rpy="0 0 0"/>
   </joint>
   <!-- Flange frame only: no tool/TCP offset has been supplied. -->
   <link name="tool0"/>
