@@ -8,7 +8,10 @@
     Meshes come from the vendor reference URDF (ref_files/synustech_description),
     authored in millimetres in each link's own joint frame, hence scale 0.001
     and zero visual origins. Each joint module in the meshes is a cylinder
-    whose axis is the link's local y, so every joint axis below is local y.
+    whose axis is the link's local y, so joints 1 to 5 rotate about local y.
+    Link6 is the exception - its frame is rotated so that +z is the tool
+    axis, as on the Dobot models and in the DUCO manual (Z6 along the tool),
+    and the Link6 mesh is rotated back by the same amount.
 
     Zero pose follows the DUCO hardware manual (Fig. 3-12 / 3-13) - arm
     pointing straight up, shoulder offset and tool flange toward DUCO +Y0,
@@ -21,7 +24,9 @@
     (230, 500, 460, 150, 175, 100), so meshes may show seams of a few mm.
     Joint ranges and max velocities are from the manual's basic-parameter
     table. Positive rotation is taken as right-hand about the DUCO frame
-    axes; TODO(synustech) - confirm every sign against the real arm.
+    axes. Zero pose, packing posture (J3 155 deg, J4 25 deg) and the
+    positive direction of every joint were checked on the real arm on
+    2026-10-10 and match the manual.
   -->
 
   <xacro:macro name="synustech" params="joint_vel joint_effort">
@@ -29,8 +34,10 @@
     <xacro:property name="mesh_dir"
                     value="file://$(find movensys_manipulator_description)/urdf/synustech/assets"/>
 
-    <!-- Manual - J1,J2,J4,J5,J6 +/-360 deg, J3 +/-160 deg -->
-    <xacro:property name="lim_full"  value="${2*pi}"/>
+    <!-- Manual - J1,J2,J4,J5,J6 +/-360 deg, J3 +/-160 deg. The full turn is
+         restricted to +/-180 deg here so the IK does not pick wound-up
+         solutions (full base turns, wrist at 325 deg) for nearby poses. -->
+    <xacro:property name="lim_full"  value="${pi}"/>
     <xacro:property name="lim_elbow" value="${160*pi/180}"/>
 
     <!-- Manual - max joint velocity 120,120,180,225,225,225 deg/s. joint_vel caps them. -->
@@ -38,22 +45,23 @@
     <xacro:property name="vel_elbow" value="${min(joint_vel, 180*pi/180)}"/>
     <xacro:property name="vel_wrist" value="${min(joint_vel, 225*pi/180)}"/>
 
-    <xacro:macro name="synustech_link" params="name mesh mass ixx ixy ixz iyy iyz izz com">
+    <!-- rpy rotates the mesh and the inertia tensor inside the link frame; com is given in the link frame. -->
+    <xacro:macro name="synustech_link" params="name mesh mass ixx ixy ixz iyy iyz izz com rpy:='0 0 0'">
       <link name="${name}">
         <inertial>
-          <origin xyz="${com}" rpy="0 0 0" />
+          <origin xyz="${com}" rpy="${rpy}" />
           <mass value="${mass}" />
           <inertia ixx="${ixx}" ixy="${ixy}" ixz="${ixz}" iyy="${iyy}" iyz="${iyz}" izz="${izz}" />
         </inertial>
         <visual>
-          <origin xyz="0 0 0" rpy="0 0 0" />
+          <origin xyz="0 0 0" rpy="${rpy}" />
           <geometry>
             <mesh filename="${mesh_dir}/${mesh}" scale="0.001 0.001 0.001" />
           </geometry>
           <material name=""><color rgba="1 1 1 1" /></material>
         </visual>
         <collision>
-          <origin xyz="0 0 0" rpy="0 0 0" />
+          <origin xyz="0 0 0" rpy="${rpy}" />
           <geometry>
             <mesh filename="${mesh_dir}/${mesh}" scale="0.001 0.001 0.001" />
           </geometry>
@@ -166,12 +174,12 @@
       ixx="0.008699" ixy="1.3768E-07" ixz="-1.0778E-07"
       iyy="0.0082917" iyz="-0.00074702" izz="0.0086035" />
 
-    <!-- joint6 - flange roll, axis along DUCO +Y0 at zero (Z6). Tool points along Link6 -y. -->
+    <!-- joint6 - flange roll, axis along DUCO +Y0 at zero (Z6). Link6 +z is the tool axis. -->
     <joint name="joint6" type="revolute">
-      <origin xyz="0 0 0.121" rpy="${-pi/2} 0 0" />
+      <origin xyz="0 0 0.121" rpy="0 0 0" />
       <parent link="Link5" />
       <child link="Link6" />
-      <axis xyz="0 -1 0" />
+      <axis xyz="0 0 1" />
       <limit lower="${-lim_full}" upper="${lim_full}" effort="${joint_effort}" velocity="${vel_wrist}" />
       <dynamics damping="5.0" friction="0.5"/>
     </joint>
@@ -180,9 +188,11 @@
       <implicitSpringDamper>true</implicitSpringDamper>
     </gazebo>
 
-    <!-- Link6 - tool flange. Origin is the flange face; the 55.5 mm flange body extends along +y back toward Link5. -->
-    <xacro:synustech_link name="Link6" mesh="Link6.STL" mass="1.652"
-      com="2.5622E-07 0.00026203 -0.032568"
+    <!-- Link6 - tool flange. Origin is the flange face, +z points out along the tool;
+         the 55.5 mm flange body extends along -z back toward Link5. The mesh has
+         the tool along its -y, so it is rotated by -pi/2 about x into this frame. -->
+    <xacro:synustech_link name="Link6" mesh="Link6.STL" mass="1.652" rpy="${-pi/2} 0 0"
+      com="2.5622E-07 -0.032568 -0.00026203"
       ixx="0.0010085" ixy="2.8568E-19" ixz="-1.2409E-18"
       iyy="0.0010085" iyz="-1.2499E-18" izz="0.0018936" />
 

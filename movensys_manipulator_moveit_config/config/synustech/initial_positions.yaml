@@ -1,7 +1,7 @@
 # Initial positions for the Synustech arm's ros2_control mock system.
 # Recorded from /joint_states in Gazebo on 2026-10-07. Keep in sync with the
-# "initial" group state in movensys_manipulator.srdf. Re-check once the joint
-# axes are verified on the real arm.
+# "initial" group state in movensys_manipulator.srdf. Joint axes and signs
+# were verified on the real arm on 2026-10-10.
 initial_positions:
   joint1: 0.041
   joint2: -0.071

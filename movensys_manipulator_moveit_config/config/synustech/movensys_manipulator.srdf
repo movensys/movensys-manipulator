@@ -7,9 +7,9 @@
   </group>
 
   <!--
-    Group states. "zero" is the DUCO straight-up pose. "initial" and "test"
-    were recorded in simulation and should be re-checked once the joint axes
-    have been verified on the real arm.
+    Group states. "zero" is the DUCO straight-up pose and was confirmed on the
+    real arm on 2026-10-10 together with the joint signs. "initial" and "test"
+    were recorded in simulation.
   -->
   <!-- "initial" recorded from /joint_states in Gazebo on 2026-10-07; keep in sync with initial_positions.yaml -->
   <group_state group="movensys_manipulator_arm" name="initial">

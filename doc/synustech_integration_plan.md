@@ -71,7 +71,10 @@ The gripper-less Dobot CR5A was used as the template.
   `Link0` which has +z up. The mount joint therefore carries a −π/2 roll in
   addition to the CR3A position and yaw.
 - Every joint module in the meshes is a cylinder whose axis is the link's
-  local y. All six URDF joint axes are therefore local y.
+  local y. Joints 1 to 5 therefore rotate about local y. `Link6` is rotated
+  by −π/2 about x relative to its mesh so that `Link6` +z is the tool axis,
+  matching the Dobot models and the DUCO manual (Z6 along the tool); joint6
+  rotates about `Link6` +z and the mesh is rotated back inside the link.
 - The vendor xacro was authored in a bent pose (upper arm vertical, forearm
   horizontal, wrist rotated). The fixed pitch and roll of joints 3 to 5 were
   changed so the URDF zero is the DUCO straight-up zero. The meshes are
@@ -111,7 +114,7 @@ New directory `movensys_manipulator_description/urdf/synustech/`:
 
 | File | Content |
 |---|---|
-| `synustech.xacro` | Macro `synustech(joint_vel, joint_effort)`. Seven links with reference inertials, STL visual and collision meshes at scale 0.001. Six `revolute` joints, all axes `0 -1 0`, manual link lengths, DUCO zero pose, manual ranges and per-joint velocity caps, damping and friction, `implicitSpringDamper` tags. |
+| `synustech.xacro` | Macro `synustech(joint_vel, joint_effort)`. Seven links with reference inertials, STL visual and collision meshes at scale 0.001. Six `revolute` joints, axes `0 -1 0` for joints 1 to 5 and `0 0 1` for joint6, manual link lengths, DUCO zero pose, per-joint velocity caps, damping and friction, `implicitSpringDamper` tags. Ranges are ±π on J1, J2, J4, J5, J6 (manual allows ±2π) and ±160° on J3. |
 | `movensys_manipulator.xacro` | Root `world_manipulator`, CR3A stage, `robot_joint` with the CR3A offset `xyz -0.03 0.275 0.05`, `rpy -π/2 0 -1.57`, then the arm macro with `joint_vel 4.0` so the datasheet caps apply. No gripper. |
 | `stage.xacro` | Copied from CR3A. Table mesh and Jetson box. Table STL is referenced from `urdf/dobot_cr3a/assets/`. |
 | `control.xacro`, `transmission.xacro`, `movensys_manipulator.gazebo.xacro` | Copied from CR5A, paths changed to `synustech`. Joints `joint1` to `joint6`, no picker joints. |
@@ -128,9 +131,10 @@ Joint definitions as implemented:
 | joint3 | Link2 to Link3 | `0.496 0 0` | `0 0 0` | `0 -1 0` | Z3, +Y0 |
 | joint4 | Link3 to Link4 | `0.4595 0 0` | `0 -π/2 0` | `0 -1 0` | Z4, +Y0 |
 | joint5 | Link4 to Link5 | `0 0 -0.1445` | `π/2 0 0` | `0 -1 0` | Z5, up |
-| joint6 | Link5 to Link6 | `0 0 0.121` | `-π/2 0 0` | `0 -1 0` | Z6, +Y0 |
+| joint6 | Link5 to Link6 | `0 0 0.121` | `0 0 0` | `0 0 1` | Z6, +Y0 |
 
-The `Link6` origin is the flange face. The tool points along `Link6` −y.
+The `Link6` origin is the flange face. The tool points along `Link6` +z, as
+on the Dobots, so pose targets with roll π mean tool down on every model.
 
 ### MoveIt config
 
@@ -143,7 +147,7 @@ files copied from CR5A:
 | `movensys_manipulator.srdf` | Chain `Link0` to `Link6`. Group states `zero` (DUCO straight-up), `initial` and `test` (recorded in Gazebo). Collision matrix generated with the Setup Assistant, 15 disabled pairs. |
 | `joint_limits.yaml` | Datasheet velocities 2.094, 2.094, 3.142, 3.927, 3.927, 3.927 rad/s. Acceleration 2.0 rad/s² placeholder. |
 | `initial_positions.yaml` | All zero. |
-| `trajectory.yaml` | Waypoints moved into this arm's workspace, about 0.45 m in front of the base at 0.6 m height, tool pointing down. |
+| `trajectory.yaml` | Waypoints moved into this arm's workspace, about 0.45 m in front of the base at 0.6 m height, tool pointing down. Joint start and return pose is the SRDF `initial` state, not the straight-up singularity. |
 | `kinematics.yaml`, `moveit_controllers.yaml`, `moveit2_client.yaml`, `sim_bridge.yaml`, `servo.yaml`, `pilz_cartesian_limits.yaml`, `movensys_manipulator_arm.ros2_control.xacro` | Unchanged from CR5A. Frames `world_manipulator` and `Link6` and all topics already match. |
 
 ### Repo wiring
@@ -172,9 +176,10 @@ files copied from CR5A:
   `MANIPULATOR_MODEL=synustech` in the container. Each joint was moved in
   the positive direction and the rotation sense matches the DUCO manual
   convention (Fig. 3-13, right-hand about the axes of Fig. 3-12). The URDF
-  `axis` signs are therefore correct relative to the manual. Whether the WMX
-  polarity on axes 2 to 7 produces the same sense on the real arm is still
-  open.
+  `axis` signs are therefore correct relative to the manual.
+- Real arm, 2026-10-10: the packing posture (J3 155°, J4 25°), the zero
+  position, and the positive direction of every joint match the manual, so
+  the WMX polarity on axes 2 to 7 agrees with the URDF.
 
 ### Gotcha found and fixed
 
@@ -192,7 +197,7 @@ which must print 0.
 
 | # | Item | Blocks | Source |
 |---|---|---|---|
-| 1 | Confirmation that the real arm's positive direction matches the manual | WMX polarity on axes 2 to 7 | Jog the real arm one joint at a time and compare with RViz. The URDF side is already verified against the manual in simulation. |
+| 1 | Confirmation that the real arm's positive direction matches the manual | WMX polarity on axes 2 to 7 | Done 2026-10-10. Packing posture, zero position, and positive direction checked on the real arm and match the manual. |
 | 2 | Reducer ratio per joint | WMX parameter file gear ratios, real and HIL modes | Datasheet, drive part numbers, or measured by jogging a known angle |
 | 3 | Physical pose at WMX encoder zero | `AbsoluteEncoderHomeOffset`, or an offset in the URDF | Whoever calibrated the arm for the 2026-03-05 export. Expected to be the DUCO straight-up zero. |
 | 4 | Joint acceleration limits | `joint_limits.yaml`, servo | Not published by DUCO. Tune on hardware. |
@@ -202,9 +207,9 @@ which must print 0.
 
 1. **Sign verification.** Done against the manual on 2026-10-07 in Gazebo
    with the sim bridge and MoveIt: every joint rotates in the DUCO positive
-   sense. Remaining is the real-arm check, which belongs to the WMX polarity
-   work in `wmx-ros2` rather than to `synustech.xacro`. Mesh seams at each
-   joint still need a visual check.
+   sense. Real-arm check done on 2026-10-10. Zero position, packing posture,
+   and positive direction all match the manual, so no WMX polarity change is
+   needed. Mesh seams at each joint still need a visual check.
 2. **Record group states.** Done in simulation on 2026-10-07. `initial`
    (SRDF and `initial_positions.yaml`) is J1 0.041, J2 -0.071, J3 1.618,
    J4 0.015, J5 -1.562, J6 1.511 rad. `test` is the same pose with J6 at
@@ -223,8 +228,19 @@ which must print 0.
 5. **Gazebo tuning.** Run `gazebo_trajectory_simulation.launch.py` and tune
    the PID gains in `control.yaml` until the arm holds pose without
    oscillation.
-6. **MoveIt execution test.** `moveit.launch.py` with the sim bridge, then
-   `trajectory_test.launch.py`. Confirm OMPL and Pilz plan and execute.
+6. **MoveIt execution test.** Done for OMPL on 2026-10-07. Two consecutive
+   runs of `trajectory_test.launch.py` in Gazebo completed every joint,
+   Cartesian, and pose-goal step with the new collision matrix. The flange
+   at zero is at world `0.270 0.275 1.385`, matching the forward kinematics
+   check. Pilz has not been exercised yet. Observation to act on: with the
+   datasheet ±360° ranges the IK regularly picks wound-up solutions, for
+   example J1 at -5.33 rad and J5 at 5.67 rad for a pose 0.45 m in front of
+   the base, and one Cartesian leg took 14 s instead of 2.6 s because of it.
+   Fixed on 2026-10-07 together with the `Link6` tool-axis frame and the
+   trajectory start pose; see section 4. Confirmed by a rerun of
+   `trajectory_test.launch.py`: all joints stay within ±π, the tool points
+   down at the waypoints, joint6 no longer flips between runs, and the first
+   Cartesian leg takes 6 s instead of 14 s.
 7. **Commit** the description, MoveIt config, workflow, README, and doc
    changes, and open the PR.
 
@@ -262,8 +278,15 @@ Blocked on items 2 and 3 above.
   the CR3A in the same cell layout.
 - URDF zero is the DUCO straight-up zero, not the vendor mesh pose, so the
   manual's joint ranges apply directly and the WMX zero is expected to match.
+- Joint ranges are ±π instead of the manual's ±2π on the five full-turn
+  joints. With ±2π the IK picked wound-up solutions (J1 at −305°, J5 at
+  325°) and the wrist flipped by 180° between runs for the same pose.
+- `Link6` +z is the tool axis, matching the Dobot models, the DUCO manual,
+  and the tool-frame assumptions in the client and teleop code. An earlier
+  version had the tool along `Link6` −y, which made the "tool down"
+  waypoints actually request a horizontal tool.
 - Link lengths follow the manual drawing rather than the vendor meshes.
   Kinematic accuracy against the real robot was preferred over seamless
   meshes.
-- `Link6` is the tool frame with the flange face at its origin, as on the
-  Dobots. No separate `tcp` link.
+- `Link6` is the tool frame with the flange face at its origin and +z along
+  the tool, as on the Dobots. No separate `tcp` link.

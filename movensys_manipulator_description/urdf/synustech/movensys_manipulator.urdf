@@ -11,7 +11,10 @@
     Meshes come from the vendor reference URDF (ref_files/synustech_description),
     authored in millimetres in each link's own joint frame, hence scale 0.001
     and zero visual origins. Each joint module in the meshes is a cylinder
-    whose axis is the link's local y, so every joint axis below is local y.
+    whose axis is the link's local y, so joints 1 to 5 rotate about local y.
+    Link6 is the exception - its frame is rotated so that +z is the tool
+    axis, as on the Dobot models and in the DUCO manual (Z6 along the tool),
+    and the Link6 mesh is rotated back by the same amount.
 
     Zero pose follows the DUCO hardware manual (Fig. 3-12 / 3-13) - arm
     pointing straight up, shoulder offset and tool flange toward DUCO +Y0,
@@ -24,7 +27,9 @@
     (230, 500, 460, 150, 175, 100), so meshes may show seams of a few mm.
     Joint ranges and max velocities are from the manual's basic-parameter
     table. Positive rotation is taken as right-hand about the DUCO frame
-    axes; TODO(synustech) - confirm every sign against the real arm.
+    axes. Zero pose, packing posture (J3 155 deg, J4 25 deg) and the
+    positive direction of every joint were checked on the real arm on
+    2026-10-10 and match the manual.
   -->
   <link name="world_manipulator"/>
   <joint name="world_manipulator_to_table" type="fixed">
@@ -114,7 +119,7 @@
     <parent link="Link0"/>
     <child link="Link1"/>
     <axis xyz="0 -1 0"/>
-    <limit effort="1000" lower="-6.283185307179586" upper="6.283185307179586" velocity="2.0943951023931953"/>
+    <limit effort="1000" lower="-3.141592653589793" upper="3.141592653589793" velocity="2.0943951023931953"/>
     <dynamics damping="15.0" friction="1.0"/>
   </joint>
   <gazebo reference="joint1">
@@ -148,7 +153,7 @@
     <parent link="Link1"/>
     <child link="Link2"/>
     <axis xyz="0 -1 0"/>
-    <limit effort="1000" lower="-6.283185307179586" upper="6.283185307179586" velocity="2.0943951023931953"/>
+    <limit effort="1000" lower="-3.141592653589793" upper="3.141592653589793" velocity="2.0943951023931953"/>
     <dynamics damping="15.0" friction="1.0"/>
   </joint>
   <gazebo reference="joint2">
@@ -216,7 +221,7 @@
     <parent link="Link3"/>
     <child link="Link4"/>
     <axis xyz="0 -1 0"/>
-    <limit effort="1000" lower="-6.283185307179586" upper="6.283185307179586" velocity="3.9269908169872414"/>
+    <limit effort="1000" lower="-3.141592653589793" upper="3.141592653589793" velocity="3.9269908169872414"/>
     <dynamics damping="10.0" friction="1.0"/>
   </joint>
   <gazebo reference="joint4">
@@ -250,7 +255,7 @@
     <parent link="Link4"/>
     <child link="Link5"/>
     <axis xyz="0 -1 0"/>
-    <limit effort="1000" lower="-6.283185307179586" upper="6.283185307179586" velocity="3.9269908169872414"/>
+    <limit effort="1000" lower="-3.141592653589793" upper="3.141592653589793" velocity="3.9269908169872414"/>
     <dynamics damping="10.0" friction="1.0"/>
   </joint>
   <gazebo reference="joint5">
@@ -278,13 +283,13 @@
       </geometry>
     </collision>
   </link>
-  <!-- joint6 - flange roll, axis along DUCO +Y0 at zero (Z6). Tool points along Link6 -y. -->
+  <!-- joint6 - flange roll, axis along DUCO +Y0 at zero (Z6). Link6 +z is the tool axis. -->
   <joint name="joint6" type="revolute">
-    <origin rpy="-1.5707963267948966 0 0" xyz="0 0 0.121"/>
+    <origin rpy="0 0 0" xyz="0 0 0.121"/>
     <parent link="Link5"/>
     <child link="Link6"/>
-    <axis xyz="0 -1 0"/>
-    <limit effort="1000" lower="-6.283185307179586" upper="6.283185307179586" velocity="3.9269908169872414"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="1000" lower="-3.141592653589793" upper="3.141592653589793" velocity="3.9269908169872414"/>
     <dynamics damping="5.0" friction="0.5"/>
   </joint>
   <gazebo reference="joint6">
@@ -292,12 +297,12 @@
   </gazebo>
   <link name="Link6">
     <inertial>
-      <origin rpy="0 0 0" xyz="2.5622E-07 0.00026203 -0.032568"/>
+      <origin rpy="-1.5707963267948966 0 0" xyz="2.5622E-07 -0.032568 -0.00026203"/>
       <mass value="1.652"/>
       <inertia ixx="0.0010085" ixy="2.8568e-19" ixz="-1.2409e-18" iyy="0.0010085" iyz="-1.2499e-18" izz="0.0018936"/>
     </inertial>
     <visual>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <origin rpy="-1.5707963267948966 0 0" xyz="0 0 0"/>
       <geometry>
         <mesh filename="file:///home/mali/workspaces/movensys_ws/install/movensys_manipulator_description/share/movensys_manipulator_description/urdf/synustech/assets/Link6.STL" scale="0.001 0.001 0.001"/>
       </geometry>
@@ -306,7 +311,7 @@
       </material>
     </visual>
     <collision>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <origin rpy="-1.5707963267948966 0 0" xyz="0 0 0"/>
       <geometry>
         <mesh filename="file:///home/mali/workspaces/movensys_ws/install/movensys_manipulator_description/share/movensys_manipulator_description/urdf/synustech/assets/Link6.STL" scale="0.001 0.001 0.001"/>
       </geometry>
