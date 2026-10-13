@@ -1,4 +1,4 @@
-# AprilTag Pick and Place
+# AprilTag Pick and Place (Simulation)
 ## Execution Procedure
 
 ### Step 1: Open Isaac Sim
