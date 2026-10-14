@@ -22,6 +22,13 @@ def generate_launch_description():
         manipulator_model,
         "quest_servo_teleop.yaml",
     )
+    # launch_ros only WARNS when a parameter file is missing and then starts
+    # the node on its code defaults, which subscribe to the Quest topics. For
+    # a model without this yaml that looks like "the arm does not move".
+    if not os.path.isfile(params_file):
+        raise FileNotFoundError(
+            f"No teleop config for MANIPULATOR_MODEL={manipulator_model}: "
+            f"{params_file}")
 
     use_sim_time = LaunchConfiguration("use_sim_time")
 

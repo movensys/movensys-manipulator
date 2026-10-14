@@ -149,6 +149,7 @@ files copied from CR5A:
 | `initial_positions.yaml` | All zero. |
 | `trajectory.yaml` | Waypoints moved into this arm's workspace, about 0.45 m in front of the base at 0.6 m height, tool pointing down. Joint start and return pose is the SRDF `initial` state, not the straight-up singularity. |
 | `kinematics.yaml`, `moveit_controllers.yaml`, `moveit2_client.yaml`, `sim_bridge.yaml`, `servo.yaml`, `pilz_cartesian_limits.yaml`, `movensys_manipulator_arm.ros2_control.xacro` | Unchanged from CR5A. Frames `world_manipulator` and `Link6` and all topics already match. |
+| `hand_servo_teleop.yaml`, `quest_servo_teleop.yaml` | Copied from CR3A on 2026-10-14. They were missing at first, and `launch_ros` only warns about a missing parameter file, so the teleop node started on its code defaults, subscribed to the Quest topics instead of `/hand_pose` and `/hand_joy`, and never engaged. Both teleop launch files now raise if the per-model yaml is absent. |
 
 ### Repo wiring
 
