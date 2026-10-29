@@ -16,6 +16,34 @@ mros ros2 topic echo /wmx/moveit2/eef_rpy
 mros ros2 topic echo /joint_states
 ```
 
+## Subscriber
+### Servo tool-frame pose target
+```
+mros ros2 topic pub --once /wmx/servo_node/tool_pose geometry_msgs/msg/PoseStamped \
+        '"{pose: {position: {x: 0.0, y: 0.0, z: 0.01}, orientation: {x: 0.1305, y: 0.0, z: 0.0, w: 0.9914}}}"'
+```
+
+### Jog joints (JOINT_JOG, rad/s per joint):
+```
+mros ros2 service call /servo_node/switch_command_type moveit_msgs/srv/ServoCommandType '"{command_type: 0}"'
+mros ros2 topic pub --rate 50 /servo_node/delta_joint_cmds control_msgs/msg/JointJog \
+        '"{joint_names: [joint1, joint2, joint3, joint4, joint5, joint6], velocities: [0.2, 0.0, 0.0, 0.0, 0.0, 0.0]}"'
+```
+
+## Jog the EEF (TWIST, `header.frame_id` selects the frame — `world_manipulator` or `Link6`):
+```
+mros ros2 service call /servo_node/switch_command_type moveit_msgs/srv/ServoCommandType '"{command_type: 1}"'
+mros ros2 topic pub --rate 50 /servo_node/delta_twist_cmds geometry_msgs/msg/TwistStamped \
+        '"{header: {frame_id: world_manipulator}, twist: {linear: {x: 0.05, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}}"'
+```
+
+## Track an absolute EEF target (POSE, **base frame only**):
+```
+mros ros2 service call /servo_node/switch_command_type moveit_msgs/srv/ServoCommandType '"{command_type: 2}"'
+mros ros2 topic pub --rate 50 /servo_node/pose_target_cmds geometry_msgs/msg/PoseStamped \
+        '"{header: {frame_id: world_manipulator}, pose: {position: {x: -0.158, y: -0.071, z: 0.346}, orientation: {x: 1.0, y: 0.0, z: 0.0, w: 0.0}}}"'
+```
+
 ## Service
 ### Get EEF pose 
 ```

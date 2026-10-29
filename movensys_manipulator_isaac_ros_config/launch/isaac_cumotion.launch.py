@@ -36,7 +36,8 @@ from launch.conditions import IfCondition
 from launch.launch_context import LaunchContext
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
-from launch_ros.actions import Node
+from launch_ros.actions import ComposableNodeContainer, Node
+from launch_ros.descriptions import ComposableNode
 from launch_ros.substitutions import FindPackageShare
 from moveit_configs_utils import MoveItConfigsBuilder
 import xacro
@@ -198,15 +199,42 @@ def launch_setup(context: LaunchContext, *args, **kwargs) -> List[Node]:
         ],
     )
 
-    api_launch = IncludeLaunchDescription(
+    moveit2_api_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution([
                 FindPackageShare('movensys_manipulator_moveit_config'),
                 'launch',
-                'trajectory_service.launch.py',
+                'moveit2_api.launch.py',
             ])
         ),
         launch_arguments={'use_sim_time': use_sim_time}.items(),
+    )
+
+    servo_yaml = load_yaml(
+        'movensys_manipulator_moveit_config',
+        os.path.join('config', manipulator_model, 'servo.yaml'),
+    )
+    servo_container = ComposableNodeContainer(
+        name='servo_container',
+        namespace='',
+        package='rclcpp_components',
+        executable='component_container_mt',
+        output='screen',
+        composable_node_descriptions=[
+            ComposableNode(
+                package='moveit_servo',
+                plugin='moveit_servo::ServoNode',
+                name='servo_node',
+                parameters=[
+                    {'moveit_servo': servo_yaml},
+                    moveit_config.robot_description,
+                    moveit_config.robot_description_semantic,
+                    moveit_config.robot_description_kinematics,
+                    moveit_config.joint_limits,
+                    {'use_sim_time': use_sim_time},
+                ],
+            ),
+        ],
     )
 
     nodes = [
@@ -214,7 +242,8 @@ def launch_setup(context: LaunchContext, *args, **kwargs) -> List[Node]:
         move_group_node,
         cumotion_planner_node,
         rviz_node,
-        api_launch,
+        moveit2_api_launch,
+        servo_container,
     ]
 
     if static_planning_scene_server is not None:

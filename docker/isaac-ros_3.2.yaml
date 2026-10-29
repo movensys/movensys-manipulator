@@ -1,3 +1,5 @@
+name: movensys_manipulator
+
 services:
   movensys_manipulator:
     restart: unless-stopped
@@ -12,14 +14,22 @@ services:
     ipc: host
     runtime: nvidia
     working_dir: /home/admin/workspaces/movensys_ws
-    entrypoint: ["/usr/local/bin/scripts/workspace-entrypoint.sh"]
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        SRC=/home/admin/workspaces/movensys_ws/src/movensys-manipulator
+        HOST_USER_UID=$$(stat -c %u $$SRC 2>/dev/null || echo 1000)
+        HOST_USER_GID=$$(stat -c %g $$SRC 2>/dev/null || echo 1000)
+        if [ "$$HOST_USER_UID" = 0 ]; then HOST_USER_UID=1000; HOST_USER_GID=1000; fi
+        export HOST_USER_UID HOST_USER_GID
+        exec /usr/local/bin/scripts/workspace-entrypoint.sh "$$@"
+      - --
     stdin_open: true
     tty: true
     environment:
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID}
-      - HOST_USER_UID=${HOST_USER_UID}
-      - HOST_USER_GID=${HOST_USER_GID}
-      - USER=${USER}
+      - USER=admin
       - RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION}
       - ISAAC_ROS_WS=/home/admin/workspaces/isaac_ros-dev
       - CYCLONEDDS_URI=file:///home/admin/workspaces/cyclonedds.xml
@@ -45,7 +55,24 @@ services:
       - |
         set -e
         [ -f ~/.bashrc ] && source ~/.bashrc || true
-        sudo chown -R admin:admin /home/admin/workspaces/movensys_ws
+        SRC=/home/admin/workspaces/movensys_ws/src/movensys-manipulator
+        DDS=/home/admin/workspaces/cyclonedds.xml
+        HOST_UID=$$(stat -c %u $$SRC); HOST_GID=$$(stat -c %g $$SRC)
+        if [ "$$HOST_UID" = 0 ]; then
+          echo "WARN: $$SRC is root-owned, keeping admin $$(id -u admin):$$(id -g admin)"
+          HOST_UID=$$(id -u admin); HOST_GID=$$(id -g admin)
+        fi
+        echo ====== Map admin to host $$HOST_UID:$$HOST_GID =======
+        if [ "$$HOST_GID" != "$$(id -g admin)" ]; then
+          sudo groupmod -g $$HOST_GID admin || echo "NOTE: groupmod reported an error, continuing"
+        fi
+        if [ "$$HOST_UID" != "$$(id -u admin)" ]; then
+          sudo usermod -u $$HOST_UID admin || echo "NOTE: usermod home chown skipped (read-only mounts)"
+        fi
+        sudo find /home/admin -xdev \
+          -path $$SRC -prune -o -path $$DDS -prune -o \
+          ! -user admin -exec chown -h admin:admin {} + \
+          || echo "WARN: ownership fixup under /home/admin incomplete"
         source /opt/ros/humble/setup.bash
 
         echo "ISAAC_ROS_WS=$$ISAAC_ROS_WS"
@@ -56,7 +83,14 @@ services:
         [ -d isaac_ros_common ]     || git clone -b release-3.2 https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_common.git isaac_ros_common
         [ -d isaac_manipulator ]    || git clone --recursive -b release-3.2 https://github.com/NVIDIA-ISAAC-ROS/isaac_manipulator.git isaac_manipulator
         [ -d isaac_ros_nvblox ]     || git clone --recursive -b release-3.2 https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_nvblox.git isaac_ros_nvblox
+        ROBOTIQ_GRIPPER_REF=21b7bfb0032377d7dbded5a73a841741f27f5e2d
         [ -d ros2_robotiq_gripper ] || git clone --recursive https://github.com/NVIDIA-ISAAC-ROS/ros2_robotiq_gripper
+        if [ "$$(git -C ros2_robotiq_gripper rev-parse HEAD)" != "$$ROBOTIQ_GRIPPER_REF" ]; then
+          echo "Checking out ros2_robotiq_gripper @ $$ROBOTIQ_GRIPPER_REF (Humble-compatible)"
+          git -C ros2_robotiq_gripper fetch -q origin $$ROBOTIQ_GRIPPER_REF
+          git -C ros2_robotiq_gripper checkout -q $$ROBOTIQ_GRIPPER_REF
+          git -C ros2_robotiq_gripper submodule update --init --recursive
+        fi
         [ -d serial ]               || git clone -b ros2 https://github.com/tylerjw/serial
 
         echo ====== Download NVIDIA Isaac ROS assets =======
@@ -76,10 +110,17 @@ services:
 
             echo "Downloading $$PACKAGE assets..."
 
-            local VERSION_URL="https://catalog.ngc.nvidia.com/api/resources/versions?orgName=nvidia&teamName=isaac&name=$$RESOURCE&isPublic=true&pageNumber=0&pageSize=100&sortOrder=CREATED_DATE_DESC"
-            local AVAILABLE_VERSIONS=$$(curl -s -H "Accept: application/json" "$$VERSION_URL")
+            # catalog.ngc.nvidia.com/api now returns an HTML page; use the public v2 API instead.
+            local VERSION_URL="https://api.ngc.nvidia.com/v2/resources/nvidia/isaac/$$RESOURCE/versions"
+            local AVAILABLE_VERSIONS=$$(curl -sL -H "Accept: application/json" "$$VERSION_URL")
 
             AVAILABLE_VERSIONS=$$(echo "$$AVAILABLE_VERSIONS" | tr -d '\r')
+
+            if ! jq -e '.recipeVersions' <<< "$$AVAILABLE_VERSIONS" >/dev/null 2>&1; then
+                echo "Failed to fetch version list for $$RESOURCE from $$VERSION_URL"
+                echo "Response was: $$(head -c 200 <<< "$$AVAILABLE_VERSIONS")"
+                return 1
+            fi
 
             local LATEST_VERSION_ID=$$(jq -r '
                 .recipeVersions[]

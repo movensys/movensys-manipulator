@@ -1,5 +1,6 @@
 ARG ARCH=amd64
 FROM nvcr.io/nvidia/isaac/ros:isaac_ros_6a0af6f39da3232fdca6b60f4b174e8a-${ARCH}
+ARG ROS_DISTRO=jazzy
 
 USER root
 WORKDIR /workspaces

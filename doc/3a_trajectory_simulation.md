@@ -1,4 +1,4 @@
-# Trajectory Planning 
+# Trajectory Planning (Simulation)
 ## Execution Procedure
 
 ### Step 1a: Open Isaac Sim
@@ -12,11 +12,10 @@ mros ros2 launch movensys_manipulator_description gazebo_trajectory_simulation.l
 
 
 
-### Step 2a: Run simulator bridge
+### Step 2: Run simulator bridge
 ```
-mros ros2 launch movensys_manipulator_moveit_config sim_bridge.launch.py simulator:=isaacsim use_sim_time:=true 
+mros ros2 launch movensys_manipulator_moveit_config sim_bridge.launch.py use_sim_time:=true
 ```
-`simulator:=gazebo` for use gazebo
 
 
 
@@ -39,7 +38,7 @@ add `rsp:=false` if use gazebo (step 1b).
 
 
 
-### Step 4: Drive the end effector with the keyboard
+### Step 4 (optional): Drive the end effector with the keyboard
 ```
 mros ros2 run movensys_manipulator_moveit_config keyboard_teleop
 ```

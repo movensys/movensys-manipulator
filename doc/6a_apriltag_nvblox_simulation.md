@@ -1,8 +1,8 @@
-# Nvblox Obstacle Avoidance
+# AprilTag + Nvblox Obstacle Avoidance (Simulation)
 ## Execution Procedure
 
 ### Step 1: Open Isaac Sim
-`~/workspaces/movensys-simulation/<MANIPULATOR_MODEL>/7a_apriltag_obstacle_avoidance_simulation.usd`
+`~/workspaces/movensys-simulation/<MANIPULATOR_MODEL>/6a_apriltag_obstacle_avoidance_simulation.usd`
 
 
 
@@ -11,7 +11,7 @@
 
 ### Step 2: Run simulator bridge
 ```
-mros ros2 launch movensys_manipulator_moveit_config sim_bridge.launch.py simulator:=isaacsim use_sim_time:=true 
+mros ros2 launch movensys_manipulator_moveit_config sim_bridge.launch.py use_sim_time:=true
 ```
 
 

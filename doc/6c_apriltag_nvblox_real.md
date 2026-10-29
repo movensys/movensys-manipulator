@@ -1,8 +1,8 @@
-# Nvblox Obstacle Avoidance
+# AprilTag + Nvblox Obstacle Avoidance (Real)
 ## Execution Procedure
 
 ### Step 1: Open Isaac Sim
-`~/workspaces/movensys-simulation/<MANIPULATOR_MODEL>/7c_apriltag_obstacle_avoidance_real.usd`
+`~/workspaces/movensys-simulation/<MANIPULATOR_MODEL>/6c_apriltag_obstacle_avoidance_real.usd`
 
 
 
@@ -10,7 +10,7 @@
 
 
 ### Step 2: Run wmx-r2 for manipulator
-check `~/workspaces/movensys_ws/src/wmx-r2/doc/launch_<MANIPULATOR_MODEL>_manipulator.md` 
+check `~/workspaces/movensys_ws/src/wmx-r2/doc/launch_manipulator.md` 
 
 
 

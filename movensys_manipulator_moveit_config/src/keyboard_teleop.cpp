@@ -10,9 +10,12 @@
 // Three modes matching moveit_msgs/srv/ServoCommandType:
 //   j = JOINT_JOG : keys 1..6 jog each joint
 //   t = TWIST     : arrows / '.' / ';' jog the EEF in the base or eef frame
-//   p = POSE      : arrows / '.' / ';' nudge an absolute EEF target pose, seeded
-//                   from the current pose (via TF) and streamed so Servo tracks it;
-//                   'w'/'e' choose base- or eef-frame nudging
+//   p = POSE      : arrows / '.' / ';' nudge the EEF target pose; 'w'/'e' choose
+//                   base- or eef-frame nudging.
+//                   base frame: an absolute target seeded from TF and streamed
+//                   here so Servo tracks it.
+//                   eef frame:  the raw delta goes to moveit2_api, which composes
+//                   it onto the current EEF pose and streams the result.
 
 #include <termios.h>
 #include <unistd.h>
@@ -61,6 +64,7 @@ constexpr int KEYCODE_E         = 0x65;
 const char* TWIST_TOPIC    = "/servo_node/delta_twist_cmds";
 const char* JOINT_TOPIC    = "/servo_node/delta_joint_cmds";
 const char* POSE_TOPIC     = "/servo_node/pose_target_cmds";
+const char* TOOL_POSE_TOPIC = "/wmx/servo_node/tool_pose";
 const char* SWITCH_SERVICE = "/servo_node/switch_command_type";
 const char* BASE_FRAME_ID  = "world_manipulator";
 const char* EEF_FRAME_ID   = "Link6";
@@ -115,6 +119,8 @@ public:
         twist_pub_ = node_->create_publisher<geometry_msgs::msg::TwistStamped>(TWIST_TOPIC, 10);
         joint_pub_ = node_->create_publisher<control_msgs::msg::JointJog>(JOINT_TOPIC, 10);
         pose_pub_  = node_->create_publisher<geometry_msgs::msg::PoseStamped>(POSE_TOPIC, 10);
+        tool_pose_pub_ =
+            node_->create_publisher<geometry_msgs::msg::PoseStamped>(TOOL_POSE_TOPIC, 10);
         switch_client_ =
             node_->create_client<moveit_msgs::srv::ServoCommandType>(SWITCH_SERVICE);
 
@@ -128,7 +134,7 @@ public:
         // While move_group executes a trajectory, pause POSE streaming and
         // re-anchor the target when it finishes (transient_local = catch last state).
         exec_sub_ = node_->create_subscription<std_msgs::msg::Bool>(
-            "/bridge/execution_active", rclcpp::QoS(1).transient_local(),
+            "/moveit2_trajectory/execution_active", rclcpp::QoS(1).transient_local(),
             std::bind(&KeyboardServo::cbExecActive, this, std::placeholders::_1));
     }
 
@@ -152,6 +158,7 @@ private:
     rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr twist_pub_;
     rclcpp::Publisher<control_msgs::msg::JointJog>::SharedPtr joint_pub_;
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_pub_;
+    rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr tool_pose_pub_;
     rclcpp::Client<moveit_msgs::srv::ServoCommandType>::SharedPtr switch_client_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr exec_sub_;
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
@@ -238,22 +245,34 @@ void KeyboardServo::cbExecActive(std_msgs::msg::Bool::SharedPtr msg) {
 }
 
 void KeyboardServo::nudgePose(double dx, double dy, double dz) {
-    std::lock_guard<std::mutex> lock(mtx_);
-    tf2::Vector3 d(dx, dy, dz);
     if (frame_ == EEF_FRAME_ID) {
-        tf2::Quaternion q(
-            target_pose_.pose.orientation.x, target_pose_.pose.orientation.y,
-            target_pose_.pose.orientation.z, target_pose_.pose.orientation.w);
-        d = tf2::quatRotate(q, d);
+        if (exec_active_.load()) {
+            return;
+        }
+        geometry_msgs::msg::PoseStamped msg;
+        msg.header.stamp       = node_->now();
+        msg.header.frame_id    = EEF_FRAME_ID;
+        msg.pose.position.x    = dx;
+        msg.pose.position.y    = dy;
+        msg.pose.position.z    = dz;
+        msg.pose.orientation.w = 1.0;   // no rotation
+        tool_pose_pub_->publish(msg);
+        return;
     }
-    target_pose_.pose.position.x += d.x();
-    target_pose_.pose.position.y += d.y();
-    target_pose_.pose.position.z += d.z();
+
+    // Base frame: accumulate an absolute target and stream it from publishPose.
+    std::lock_guard<std::mutex> lock(mtx_);
+    target_pose_.pose.position.x += dx;
+    target_pose_.pose.position.y += dy;
+    target_pose_.pose.position.z += dz;
 }
 
 void KeyboardServo::publishPose() {
     if (exec_active_.load()) {
         return;  // paused while a move_group trajectory executes
+    }
+    if (frame_ == EEF_FRAME_ID) {
+        return;  // moveit2_api owns the stream in tool-frame mode
     }
     std::lock_guard<std::mutex> lock(mtx_);
     if (mode_ != Mode::POSE) {
@@ -345,8 +364,16 @@ int KeyboardServo::keyLoop() {
                 break;
 
             // --- twist command frame / direction ---
-            case KEYCODE_W: frame_ = BASE_FRAME_ID;
-                RCLCPP_INFO(node_->get_logger(), "Frame: %s", frame_.c_str()); break;
+            case KEYCODE_W: {
+                frame_ = BASE_FRAME_ID;
+                RCLCPP_INFO(node_->get_logger(), "Frame: %s", frame_.c_str());
+                Mode mode;
+                { std::lock_guard<std::mutex> lock(mtx_); mode = mode_; }
+                if (mode == Mode::POSE) {
+                    seedTargetFromTF();
+                }
+                break;
+            }
             case KEYCODE_E: frame_ = EEF_FRAME_ID;
                 RCLCPP_INFO(node_->get_logger(), "Frame: %s", frame_.c_str()); break;
             case KEYCODE_R: sign_ = -sign_;

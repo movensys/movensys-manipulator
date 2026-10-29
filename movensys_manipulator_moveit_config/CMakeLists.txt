@@ -17,6 +17,7 @@ find_package(ament_cmake REQUIRED)
 find_package(ament_cmake_python REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rcl_interfaces REQUIRED)
 find_package(rclpy REQUIRED)
 find_package(rclcpp_action REQUIRED)
 find_package(control_msgs REQUIRED)
@@ -32,6 +33,13 @@ find_package(tf2_ros REQUIRED)
 find_package(tf2_msgs REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(tl_expected REQUIRED)
+find_package(Boost REQUIRED COMPONENTS random)
+if(NOT TARGET tl::expected AND TARGET tl_expected::tl_expected)
+  add_library(tl::expected INTERFACE IMPORTED)
+  set_target_properties(tl::expected PROPERTIES
+    INTERFACE_LINK_LIBRARIES tl_expected::tl_expected)
+endif()
 
 # MoveIt Servo's ServoCommandType service only exists on Jazzy and newer; it is
 # absent on Humble. Guard the servo teleop executables so the package still
@@ -90,18 +98,16 @@ install(DIRECTORY include/
   DESTINATION include
 )
 
-add_executable(isaacsim_bridge src/isaacsim_bridge.cpp)
-ament_target_dependencies(isaacsim_bridge rclcpp rclcpp_action control_msgs trajectory_msgs sensor_msgs std_msgs std_srvs)
-
-add_executable(gazebo_bridge src/gazebo_bridge.cpp)
-ament_target_dependencies(gazebo_bridge rclcpp rclcpp_action control_msgs trajectory_msgs sensor_msgs std_srvs)
+# Drives both Isaac Sim and Gazebo from one node; sim_bridge.launch.py uses this.
+add_executable(sim_bridge src/sim_bridge.cpp)
+ament_target_dependencies(sim_bridge rclcpp rclcpp_action control_msgs trajectory_msgs sensor_msgs std_msgs std_srvs)
 
 if(HAVE_SERVO_COMMAND_TYPE)
   add_executable(keyboard_teleop src/keyboard_teleop.cpp)
   ament_target_dependencies(keyboard_teleop rclcpp geometry_msgs control_msgs moveit_msgs std_msgs tf2 tf2_ros)
 
   add_executable(quest_servo_teleop src/quest_servo_teleop.cpp)
-  ament_target_dependencies(quest_servo_teleop rclcpp geometry_msgs sensor_msgs moveit_msgs std_msgs tf2 tf2_ros)
+  ament_target_dependencies(quest_servo_teleop rclcpp rcl_interfaces geometry_msgs sensor_msgs moveit_msgs std_msgs tf2 tf2_ros)
 endif()
 
 add_executable(trajectory_test src/trajectory_test.cpp)
@@ -154,9 +160,9 @@ ament_target_dependencies(yolo_pick_and_place_cpp
   std_srvs
 )
 
-add_executable(trajectory_api src/trajectory_api.cpp)
-target_link_libraries(trajectory_api moveit2_client_lib)
-ament_target_dependencies(trajectory_api
+add_executable(moveit2_api src/moveit2_api.cpp)
+target_link_libraries(moveit2_api moveit2_client_lib)
+ament_target_dependencies(moveit2_api
   rclcpp
   moveit_ros_planning_interface
   moveit_msgs
@@ -165,14 +171,14 @@ ament_target_dependencies(trajectory_api
 )
 
 rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
-target_link_libraries(trajectory_api ${cpp_typesupport_target})
+target_link_libraries(moveit2_api ${cpp_typesupport_target})
 
 install(TARGETS
   trajectory_test
   coverage_pose
   obstacle_avoidance_cpp
   apriltag_pick_and_place
-  trajectory_api
+  moveit2_api
   yolo_pick_and_place_cpp
   DESTINATION lib/${PROJECT_NAME}
 )
@@ -185,7 +191,7 @@ if(HAVE_SERVO_COMMAND_TYPE)
   )
 endif()
 
-install(TARGETS moveit2_client_lib isaacsim_bridge gazebo_bridge
+install(TARGETS moveit2_client_lib sim_bridge
   EXPORT export_moveit2_client_lib
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
