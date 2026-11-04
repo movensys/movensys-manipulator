@@ -73,6 +73,8 @@ add_library(moveit2_client_lib SHARED
 )
 ament_target_dependencies(moveit2_client_lib
   rclcpp
+  rclcpp_action
+  control_msgs
   std_srvs
   moveit_ros_planning_interface
   moveit_msgs
@@ -201,6 +203,8 @@ install(TARGETS moveit2_client_lib sim_bridge
 ament_export_targets(export_moveit2_client_lib HAS_LIBRARY_TARGET)
 ament_export_dependencies(
   rclcpp
+  rclcpp_action
+  control_msgs
   std_srvs
   moveit_ros_planning_interface
   moveit_msgs

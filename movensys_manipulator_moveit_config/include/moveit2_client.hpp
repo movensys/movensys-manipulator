@@ -15,9 +15,11 @@
 #include <string>
 #include <vector>
 
+#include <control_msgs/action/gripper_command.hpp>
 #include <geometry_msgs/msg/pose.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp_action/rclcpp_action.hpp>
 #include <std_srvs/srv/set_bool.hpp>
 #include <tf2_msgs/msg/tf_message.hpp>
 
@@ -86,6 +88,8 @@ class MoveIt2Client{
         rclcpp::Node::SharedPtr node_;
         std::shared_ptr<moveit::planning_interface::MoveGroupInterface> move_group_;
         rclcpp::Client<std_srvs::srv::SetBool>::SharedPtr gripper_client_;
+        // Used when /wmx/set_gripper is absent and the ros2_control gripper controller is up.
+        rclcpp_action::Client<control_msgs::action::GripperCommand>::SharedPtr gripper_action_client_;
         rclcpp::Subscription<tf2_msgs::msg::TFMessage>::SharedPtr tf_sub_;
         std::map<std::string, geometry_msgs::msg::TransformStamped> tf_cache_;
         std::mutex tf_mutex_;

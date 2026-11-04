@@ -23,6 +23,10 @@ MoveIt2Client::MoveIt2Client(const rclcpp::Node::SharedPtr& node, const std::str
         node_, group_name);
     gripper_client_ = node_->create_client<std_srvs::srv::SetBool>("/wmx/set_gripper");
 
+    // ros2_control path (wmx_r2_control): GripperActionController instead of the SetBool service.
+    gripper_action_client_ = rclcpp_action::create_client<control_msgs::action::GripperCommand>(
+        node_, "/movensys_manipulator_gripper_controller/gripper_cmd");
+
     tf_sub_ = node_->create_subscription<tf2_msgs::msg::TFMessage>(
         "/tf", 10,
         std::bind(&MoveIt2Client::tfCallback, this, std::placeholders::_1));
@@ -386,7 +390,53 @@ std::optional<TFResult> MoveIt2Client::getCurrentEefPose() {
 }
 
 bool MoveIt2Client::setGripper(bool gripper_value){
-    if (!gripper_client_->wait_for_service(std::chrono::duration<double>(timeout))) {
+    // Use whichever gripper backend is running: native SetBool service or ros2_control action.
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::duration<double>(timeout);
+    while (!gripper_client_->service_is_ready() &&
+           !gripper_action_client_->action_server_is_ready() &&
+           std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    if (!gripper_client_->service_is_ready() && gripper_action_client_->action_server_is_ready()) {
+        using GripperCommand = control_msgs::action::GripperCommand;
+
+        GripperCommand::Goal goal;
+        // picker_1_joint limits (gripper.xacro): 0.0 open, 0.045 closed.
+        goal.command.position = gripper_value ? 0.045 : 0.0;
+
+        auto goal_future = gripper_action_client_->async_send_goal(goal);
+        if (goal_future.wait_for(std::chrono::duration<double>(timeout)) !=
+            std::future_status::ready) {
+            RCLCPP_ERROR(node_->get_logger(), "Gripper action goal send timeout");
+            return false;
+        }
+        auto goal_handle = goal_future.get();
+        if (!goal_handle) {
+            RCLCPP_ERROR(node_->get_logger(), "Gripper action goal rejected");
+            return false;
+        }
+
+        auto result_future = gripper_action_client_->async_get_result(goal_handle);
+        if (result_future.wait_for(std::chrono::duration<double>(timeout)) !=
+            std::future_status::ready) {
+            RCLCPP_ERROR(node_->get_logger(), "Gripper action result timeout");
+            return false;
+        }
+        auto wrapped = result_future.get();
+        const bool ok = wrapped.code == rclcpp_action::ResultCode::SUCCEEDED;
+        if (ok) {
+            RCLCPP_INFO(node_->get_logger(), "Gripper: %s", gripper_value ? "Close" : "Open");
+        } else {
+            RCLCPP_ERROR(node_->get_logger(), "Gripper action failed");
+        }
+
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds(static_cast<int>(delay_gripper * 1000)));
+        return ok;
+    }
+
+    // The loop above already waited up to timeout.
+    if (!gripper_client_->service_is_ready()) {
         RCLCPP_WARN(node_->get_logger(), "Gripper service not available");
         return false;
     }

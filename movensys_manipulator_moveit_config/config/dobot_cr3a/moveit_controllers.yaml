@@ -9,6 +9,7 @@ moveit_controller_manager: moveit_simple_controller_manager/MoveItSimpleControll
 moveit_simple_controller_manager:
   controller_names:
     - movensys_manipulator_arm_controller
+    - movensys_manipulator_gripper_controller
 
   movensys_manipulator_arm_controller:
     action_ns: follow_joint_trajectory
@@ -21,3 +22,12 @@ moveit_simple_controller_manager:
       - joint4
       - joint5
       - joint6
+
+  # ros2_control path only (wmx_r2_control use_gripper:=true). MoveIt connects lazily,
+  # so on the native path this entry is unused and harmless.
+  movensys_manipulator_gripper_controller:
+    action_ns: gripper_cmd
+    type: GripperCommand
+    default: true
+    joints:
+      - picker_1_joint
