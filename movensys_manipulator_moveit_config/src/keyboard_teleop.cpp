@@ -111,10 +111,7 @@ void quit(int /*sig*/) {
 class KeyboardServo {
 public:
     KeyboardServo() {
-        // Force sim time so TF and stamps line up with the Isaac-driven clock.
-        auto opts = rclcpp::NodeOptions().parameter_overrides(
-            {rclcpp::Parameter("use_sim_time", true)});
-        node_ = rclcpp::Node::make_shared("keyboard_teleop", opts);
+        node_ = rclcpp::Node::make_shared("keyboard_teleop");
 
         twist_pub_ = node_->create_publisher<geometry_msgs::msg::TwistStamped>(TWIST_TOPIC, 10);
         joint_pub_ = node_->create_publisher<control_msgs::msg::JointJog>(JOINT_TOPIC, 10);
