@@ -6,7 +6,6 @@ services:
     build:
       context: .
       dockerfile: general.Dockerfile
-      network: host
       args:
         - ROS_DISTRO=${ROS_DISTRO}
     image: ${IMAGE_NAME}
