@@ -2,7 +2,7 @@
 
 ## 1. Bashrc Configuration [~/.bashrc]
 ```
-export ROS_DOMAIN_ID=73                         #use any number
+export ROS_DOMAIN_ID=70                         #use any number
 export ROS_DISTRO=jazzy                         #tested {jazzy, humble}
 export CPU_ARCH=x86-64                          #tested {x86-64, arm64}
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
