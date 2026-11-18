@@ -163,6 +163,10 @@ def launch_setup(context, *args, **kwargs):
                     moveit_config.robot_description_semantic,
                     moveit_config.robot_description_kinematics,
                     moveit_config.joint_limits,
+                    {
+                        "update_period": servo_yaml["publish_period"],
+                        "planning_group_name": servo_yaml["move_group_name"],
+                    },
                     {"use_sim_time": use_sim_time},
                 ],
             ),
