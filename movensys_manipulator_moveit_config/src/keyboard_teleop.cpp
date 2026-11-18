@@ -12,8 +12,9 @@
 //   t = TWIST     : arrows / '.' / ';' jog the EEF in the base or eef frame
 //   p = POSE      : arrows / '.' / ';' nudge the EEF target pose; 'w'/'e' choose
 //                   base- or eef-frame nudging.
-//                   base frame: an absolute target seeded from TF and streamed
-//                   here so Servo tracks it.
+//                   base frame: keys move a goal kept within pose_max_lead of the
+//                   streamed target; the streamed target follows the goal with a
+//                   pose_speed / pose_accel profile, so Servo never has to catch up.
 //                   eef frame:  the raw delta goes to moveit2_api, which composes
 //                   it onto the current EEF pose and streams the result.
 
@@ -25,8 +26,11 @@
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
+#include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <csignal>
 #include <cstdio>
 #include <memory>
@@ -73,8 +77,6 @@ const char* EEF_FRAME_ID   = "Link6";
 constexpr int8_t CMD_JOINT_JOG = 0;
 constexpr int8_t CMD_TWIST     = 1;
 constexpr int8_t CMD_POSE      = 2;
-
-constexpr double POSE_STEP = 0.01;  // metres per keypress in POSE mode
 }  // namespace
 
 enum class Mode { NONE, JOINT, TWIST, POSE };
@@ -121,12 +123,22 @@ public:
         switch_client_ =
             node_->create_client<moveit_msgs::srv::ServoCommandType>(SWITCH_SERVICE);
 
+        pose_step_     = node_->declare_parameter<double>("pose_step", 0.01);
+        pose_max_lead_ = node_->declare_parameter<double>("pose_max_lead", 0.01);
+        pose_speed_    = node_->declare_parameter<double>("pose_speed", 0.08);
+        pose_accel_    = node_->declare_parameter<double>("pose_accel", 2.0);
+        pose_rate_     = node_->declare_parameter<double>("pose_rate", 500.0);
+        if (!(pose_rate_ > 0.0)) {
+            pose_rate_ = 500.0;
+        }
+
         tf_buffer_   = std::make_shared<tf2_ros::Buffer>(node_->get_clock());
         tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
-        // Streams the POSE target so Servo keeps tracking it (~50 Hz).
+        // Many target updates per Servo cycle, so Servo never sees a doubled step.
         pose_timer_ = node_->create_wall_timer(
-            20ms, std::bind(&KeyboardServo::publishPose, this));
+            std::chrono::duration<double>(1.0 / pose_rate_),
+            std::bind(&KeyboardServo::publishPose, this));
 
         // While move_group executes a trajectory, pause POSE streaming and
         // re-anchor the target when it finishes (transient_local = catch last state).
@@ -148,6 +160,7 @@ private:
     bool seedTargetFromTF();
     void enterPoseMode();
     void nudgePose(double dx, double dy, double dz);
+    void advanceTarget();
     void publishPose();
     void cbExecActive(std_msgs::msg::Bool::SharedPtr msg);
 
@@ -164,9 +177,17 @@ private:
 
     std::atomic<bool> exec_active_{false};   // true while a move_group plan runs
 
-    std::mutex mtx_;                       // guards mode_ and target_pose_
+    std::mutex mtx_;                       // guards mode_, target_pose_, goal_, target_vel_
     Mode mode_ = Mode::NONE;
-    geometry_msgs::msg::PoseStamped target_pose_;
+    geometry_msgs::msg::PoseStamped target_pose_;   // streamed to Servo
+    geometry_msgs::msg::Point goal_;                // where the keys want the EEF
+    std::array<double, 3> target_vel_{};            // streamed target velocity [m/s]
+
+    double pose_step_ = 0.0;
+    double pose_max_lead_ = 0.0;
+    double pose_speed_ = 0.0;
+    double pose_accel_ = 0.0;
+    double pose_rate_ = 0.0;
 
     std::string frame_ = BASE_FRAME_ID;    // twist command frame ('w'/'e')
     double sign_ = 1.0;                     // direction ('r')
@@ -210,6 +231,8 @@ bool KeyboardServo::seedTargetFromTF() {
     target_pose_.pose.position.y = tf.transform.translation.y;
     target_pose_.pose.position.z = tf.transform.translation.z;
     target_pose_.pose.orientation = tf.transform.rotation;
+    goal_ = target_pose_.pose.position;
+    target_vel_ = {0.0, 0.0, 0.0};
     RCLCPP_INFO(node_->get_logger(),
                 "POSE target seeded at [%.3f, %.3f, %.3f]",
                 target_pose_.pose.position.x, target_pose_.pose.position.y,
@@ -257,11 +280,73 @@ void KeyboardServo::nudgePose(double dx, double dy, double dz) {
         return;
     }
 
-    // Base frame: accumulate an absolute target and stream it from publishPose.
+    // Base frame: keep only the part of the current lead that points along this
+    // key's direction, so a reversal or turn takes effect at once, then move the
+    // goal, never more than pose_max_lead_ ahead of the streamed target.
     std::lock_guard<std::mutex> lock(mtx_);
-    target_pose_.pose.position.x += dx;
-    target_pose_.pose.position.y += dy;
-    target_pose_.pose.position.z += dz;
+    const auto & p = target_pose_.pose.position;
+    const double step = std::sqrt(dx * dx + dy * dy + dz * dz);
+    if (step <= 0.0) {
+        return;
+    }
+    const double along = std::max(
+        0.0, ((goal_.x - p.x) * dx + (goal_.y - p.y) * dy + (goal_.z - p.z) * dz) / step);
+    double ex = (along + step) * dx / step;
+    double ey = (along + step) * dy / step;
+    double ez = (along + step) * dz / step;
+    const double lead = std::sqrt(ex * ex + ey * ey + ez * ez);
+    if (lead > pose_max_lead_) {
+        const double k = pose_max_lead_ / lead;
+        ex *= k;
+        ey *= k;
+        ez *= k;
+    }
+    goal_.x = p.x + ex;
+    goal_.y = p.y + ey;
+    goal_.z = p.z + ez;
+}
+
+// Moves the streamed target toward goal_. The wanted velocity points at the goal
+// with a speed that can still stop on it; the actual velocity changes toward it by
+// at most pose_accel_ * dt, so turns and reversals stay accel-limited.
+void KeyboardServo::advanceTarget() {
+    auto & p = target_pose_.pose.position;
+    const double dt = 1.0 / pose_rate_;
+    const std::array<double, 3> e{goal_.x - p.x, goal_.y - p.y, goal_.z - p.z};
+    const double dist = std::sqrt(e[0] * e[0] + e[1] * e[1] + e[2] * e[2]);
+
+    std::array<double, 3> want{0.0, 0.0, 0.0};
+    if (dist > 1e-6) {
+        const double speed = std::min(pose_speed_, std::sqrt(2.0 * pose_accel_ * dist));
+        for (int i = 0; i < 3; ++i) {
+            want[i] = e[i] / dist * speed;
+        }
+    }
+
+    std::array<double, 3> dv{};
+    double dvNorm = 0.0;
+    for (int i = 0; i < 3; ++i) {
+        dv[i] = want[i] - target_vel_[i];
+        dvNorm += dv[i] * dv[i];
+    }
+    dvNorm = std::sqrt(dvNorm);
+    const double dvMax = pose_accel_ * dt;
+    const double k = (dvNorm > dvMax) ? dvMax / dvNorm : 1.0;
+    for (int i = 0; i < 3; ++i) {
+        target_vel_[i] += k * dv[i];
+    }
+
+    const double speed = std::sqrt(target_vel_[0] * target_vel_[0] +
+                                   target_vel_[1] * target_vel_[1] +
+                                   target_vel_[2] * target_vel_[2]);
+    if (dist < 1e-4 && speed < dvMax) {
+        p = goal_;
+        target_vel_ = {0.0, 0.0, 0.0};
+        return;
+    }
+    p.x += target_vel_[0] * dt;
+    p.y += target_vel_[1] * dt;
+    p.z += target_vel_[2] * dt;
 }
 
 void KeyboardServo::publishPose() {
@@ -275,6 +360,7 @@ void KeyboardServo::publishPose() {
     if (mode_ != Mode::POSE) {
         return;
     }
+    advanceTarget();
     target_pose_.header.stamp = node_->now();
     pose_pub_->publish(target_pose_);
 }
@@ -317,28 +403,28 @@ int KeyboardServo::keyLoop() {
             // --- X / Y ---
             case KEYCODE_UP:
                 if (mode == Mode::POSE) {
-                    nudgePose(POSE_STEP, 0, 0);
+                    nudgePose(pose_step_, 0, 0);
                 } else {
                     twist->twist.linear.x =  sign_; publish_twist = true;
                 }
                 break;
             case KEYCODE_DOWN:
                 if (mode == Mode::POSE) {
-                    nudgePose(-POSE_STEP, 0, 0);
+                    nudgePose(-pose_step_, 0, 0);
                 } else {
                     twist->twist.linear.x = -sign_; publish_twist = true;
                 }
                 break;
             case KEYCODE_RIGHT:
                 if (mode == Mode::POSE) {
-                    nudgePose(0, POSE_STEP, 0);
+                    nudgePose(0, pose_step_, 0);
                 } else {
                     twist->twist.linear.y =  sign_; publish_twist = true;
                 }
                 break;
             case KEYCODE_LEFT:
                 if (mode == Mode::POSE) {
-                    nudgePose(0, -POSE_STEP, 0);
+                    nudgePose(0, -pose_step_, 0);
                 } else {
                     twist->twist.linear.y = -sign_; publish_twist = true;
                 }
@@ -347,14 +433,14 @@ int KeyboardServo::keyLoop() {
             // --- Z ---
             case KEYCODE_SEMICOLON:
                 if (mode == Mode::POSE) {
-                    nudgePose(0, 0, POSE_STEP);
+                    nudgePose(0, 0, pose_step_);
                 } else {
                     twist->twist.linear.z =  sign_; publish_twist = true;
                 }
                 break;
             case KEYCODE_PERIOD:
                 if (mode == Mode::POSE) {
-                    nudgePose(0, 0, -POSE_STEP);
+                    nudgePose(0, 0, -pose_step_);
                 } else {
                     twist->twist.linear.z = -sign_; publish_twist = true;
                 }

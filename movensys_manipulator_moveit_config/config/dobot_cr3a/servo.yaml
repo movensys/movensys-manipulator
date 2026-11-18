@@ -1,7 +1,7 @@
 command_in_type: "unitless"
 scale:
-  linear: 0.4        # max linear EEF speed  [m/s]
-  rotational: 0.8    # max angular EEF speed [rad/s]
+  linear: 0.175      # Butterworth loop reaches 2/(2+1.5) of this: 0.1 m/s
+  rotational: 0.306  # Butterworth loop reaches 2/(2+1.5) of this: 0.175 rad/s
   joint: 0.5         # max joint speed for joint-jog commands [rad/s]
 
 override_velocity_scaling_factor: 0.0
@@ -9,7 +9,7 @@ override_velocity_scaling_factor: 0.0
 publish_period: 0.025            # publish rate [s] (~40 Hz); must be < max_expected_latency/3
 command_out_type: trajectory_msgs/JointTrajectory
 publish_joint_positions: true
-publish_joint_velocities: false
+publish_joint_velocities: true
 publish_joint_accelerations: false
 
 # Smooth the streamed commands.
