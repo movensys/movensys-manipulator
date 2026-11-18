@@ -151,6 +151,7 @@ def launch_setup(context, *args, **kwargs):
         package="rclcpp_components",
         executable="component_container_mt",
         output="screen",
+        parameters=[{"use_sim_time": use_sim_time}],
         composable_node_descriptions=[
             ComposableNode(
                 package="moveit_servo",
