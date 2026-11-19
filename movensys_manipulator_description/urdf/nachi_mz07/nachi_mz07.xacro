@@ -60,7 +60,7 @@
     </link>
 
     <joint name="joint2" type="revolute">
-      <origin xyz="0.050 0 0.151" rpy="0 0 0" />
+      <origin xyz="0.050 0 0.161" rpy="0 0 0" />
       <parent link="Link1" />
       <child link="Link2" />
       <axis xyz="0 -1 0" />
@@ -82,20 +82,20 @@
       <visual>
         <origin xyz="0 0 0" rpy="0 0 0" />
         <geometry>
-          <mesh filename="file://$(find movensys_manipulator_description)/urdf/nachi_mz07/assets/Link2.STL" scale="0.001 0.001 0.001"/>
+          <mesh filename="file://$(find movensys_manipulator_description)/urdf/nachi_mz07/assets/Link2.STL" scale="0.001 0.001 ${0.001*420/330}"/>
         </geometry>
         <material name=""><color rgba="1 1 1 1" /></material>
       </visual>
       <collision>
         <origin xyz="0 0 0" rpy="0 0 0" />
         <geometry>
-          <mesh filename="file://$(find movensys_manipulator_description)/urdf/nachi_mz07/assets/Link2.STL" scale="0.001 0.001 0.001"/>
+          <mesh filename="file://$(find movensys_manipulator_description)/urdf/nachi_mz07/assets/Link2.STL" scale="0.001 0.001 ${0.001*420/330}"/>
         </geometry>
       </collision>
     </link>
 
     <joint name="joint3" type="revolute">
-      <origin xyz="0 0 0.330" rpy="0 0 0" />
+      <origin xyz="0 0 0.420" rpy="0 0 0" />
       <parent link="Link2" />
       <child link="Link3" />
       <axis xyz="0 -1 0" />
@@ -152,20 +152,20 @@
       <visual>
         <origin xyz="0 0 0" rpy="0 0 0" />
         <geometry>
-          <mesh filename="file://$(find movensys_manipulator_description)/urdf/nachi_mz07/assets/Link4.STL" scale="0.001 0.001 0.001"/>
+          <mesh filename="file://$(find movensys_manipulator_description)/urdf/nachi_mz07/assets/Link4.STL" scale="${0.001*349/249} 0.001 0.001"/>
         </geometry>
         <material name=""><color rgba="1 1 1 1" /></material>
       </visual>
       <collision>
         <origin xyz="0 0 0" rpy="0 0 0" />
         <geometry>
-          <mesh filename="file://$(find movensys_manipulator_description)/urdf/nachi_mz07/assets/Link4.STL" scale="0.001 0.001 0.001"/>
+          <mesh filename="file://$(find movensys_manipulator_description)/urdf/nachi_mz07/assets/Link4.STL" scale="${0.001*349/249} 0.001 0.001"/>
         </geometry>
       </collision>
     </link>
 
     <joint name="joint5" type="revolute">
-      <origin xyz="0.249 0 0" rpy="0 0 0" />
+      <origin xyz="0.349 0 0" rpy="0 0 0" />
       <parent link="Link4" />
       <child link="Link5" />
       <axis xyz="0 -1 0" />
@@ -200,7 +200,7 @@
     </link>
 
     <joint name="joint6" type="revolute">
-      <origin xyz="0.065 0 0" rpy="0 0 0" />
+      <origin xyz="0.078 0 0" rpy="0 0 0" />
       <parent link="Link5" />
       <child link="Link6" />
       <axis xyz="1 0 0" />
@@ -214,20 +214,20 @@
 
     <link name="Link6">
       <inertial>
-        <origin xyz="0.00558 -0.00007 0.00028" rpy="0 0 0" />
+        <origin xyz="-0.01242 -0.00007 0.00028" rpy="0 0 0" />
         <mass value="0.24242" />
         <inertia ixx="0.000171778" ixy="2.105E-08" ixz="-7.513E-08"
                  iyy="8.87059E-05" iyz="5.6478E-07" izz="9.23374E-05" />
       </inertial>
       <visual>
-        <origin xyz="0 0 0" rpy="0 0 0" />
+        <origin xyz="-0.018 0 0" rpy="0 0 0" />
         <geometry>
           <mesh filename="file://$(find movensys_manipulator_description)/urdf/nachi_mz07/assets/Link6.STL" scale="0.001 0.001 0.001"/>
         </geometry>
         <material name=""><color rgba="1 1 1 1" /></material>
       </visual>
       <collision>
-        <origin xyz="0 0 0" rpy="0 0 0" />
+        <origin xyz="-0.018 0 0" rpy="0 0 0" />
         <geometry>
           <mesh filename="file://$(find movensys_manipulator_description)/urdf/nachi_mz07/assets/Link6.STL" scale="0.001 0.001 0.001"/>
         </geometry>

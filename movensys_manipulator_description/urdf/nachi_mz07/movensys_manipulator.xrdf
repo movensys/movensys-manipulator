@@ -76,7 +76,8 @@ self_collision:
       - "Link4"
       - "Link5"
 
-# Spheres are hand-fitted to the STL bounding boxes (link frames, metres).
+# Spheres are hand-fitted to the STL bounding boxes (link frames, metres),
+# with Link2/Link4 extended to the MZ07LF arm lengths.
 # Rough first pass - refine with Isaac Sim's sphere editor if needed.
 geometry:
   auto_generated_collision_sphere_group:
@@ -94,9 +95,11 @@ geometry:
       Link2:
         - center: [0.0, 0.0, 0.0]
           radius: 0.1
-        - center: [0.0, 0.0, 0.165]
+        - center: [0.0, 0.0, 0.14]
           radius: 0.08
-        - center: [0.0, 0.0, 0.33]
+        - center: [0.0, 0.0, 0.28]
+          radius: 0.08
+        - center: [0.0, 0.0, 0.42]
           radius: 0.1
       Link3:
         - center: [0.0, 0.0, 0.02]
@@ -110,11 +113,13 @@ geometry:
           radius: 0.06
         - center: [0.23, 0.0, 0.0]
           radius: 0.06
+        - center: [0.33, 0.0, 0.0]
+          radius: 0.06
       Link5:
         - center: [0.0, 0.0, 0.0]
           radius: 0.05
         - center: [0.05, 0.0, 0.0]
           radius: 0.045
       Link6:
-        - center: [0.007, 0.0, 0.0]
+        - center: [-0.011, 0.0, 0.0]
           radius: 0.036

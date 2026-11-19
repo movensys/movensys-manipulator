@@ -23,6 +23,7 @@
     </group_state>
     <!--DISABLE COLLISIONS: By default it is assumed that any link of the robot could potentially come into collision with any other link in the robot. This tag disables collision checking between a specified pair of links. -->
     <disable_collisions link1="Link0" link2="Link1" reason="Adjacent"/>
+    <disable_collisions link1="Link0" link2="Link3" reason="Never"/>
     <disable_collisions link1="Link0" link2="table" reason="Adjacent"/>
     <disable_collisions link1="Link1" link2="Link2" reason="Adjacent"/>
     <disable_collisions link1="Link1" link2="Link3" reason="Never"/>
@@ -31,7 +32,6 @@
     <disable_collisions link1="Link2" link2="Link4" reason="Never"/>
     <disable_collisions link1="Link2" link2="Link5" reason="Never"/>
     <disable_collisions link1="Link2" link2="Link6" reason="Never"/>
-    <disable_collisions link1="Link2" link2="table" reason="Never"/>
     <disable_collisions link1="Link3" link2="Link4" reason="Adjacent"/>
     <disable_collisions link1="Link3" link2="Link5" reason="Never"/>
     <disable_collisions link1="Link3" link2="Link6" reason="Never"/>
