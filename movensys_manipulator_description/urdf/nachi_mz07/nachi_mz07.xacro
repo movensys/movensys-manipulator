@@ -1,0 +1,239 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:macro name="nachi_mz07" params="joint_vel joint_effort">
+
+    <link name="Link0">
+      <inertial>
+        <origin xyz="-0.03380 -0.00003 0.09994" rpy="0 0 0" />
+        <mass value="53.85406" />
+        <inertia ixx="0.279257" ixy="-9.60788E-05" ixz="0.00794124"
+                 iyy="0.437508" iyz="-7.22667E-05" izz="0.390213" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find movensys_manipulator_description)/urdf/nachi_mz07/assets/Link0.STL" scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name=""><color rgba="1 1 1 1" /></material>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find movensys_manipulator_description)/urdf/nachi_mz07/assets/Link0.STL" scale="0.001 0.001 0.001"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <joint name="joint1" type="revolute">
+      <origin xyz="0 0 0.194" rpy="0 0 0" />
+      <parent link="Link0" />
+      <child link="Link1" />
+      <axis xyz="0 0 1" />
+      <limit lower="-2.9671" upper="2.9671" effort="${joint_effort}" velocity="${joint_vel}" />
+      <dynamics damping="10.0" friction="1.0"/>
+    </joint>
+
+    <gazebo reference="joint1">
+      <implicitSpringDamper>true</implicitSpringDamper>
+    </gazebo>
+
+    <link name="Link1">
+      <inertial>
+        <origin xyz="0.01484 0.00002 0.08420" rpy="0 0 0" />
+        <mass value="12.04356" />
+        <inertia ixx="0.0979916" ixy="-1.78307E-06" ixz="0.0130848"
+                 iyy="0.0645383" iyz="2.28879E-05" izz="0.0827426" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find movensys_manipulator_description)/urdf/nachi_mz07/assets/Link1.STL" scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name=""><color rgba="1 1 1 1" /></material>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find movensys_manipulator_description)/urdf/nachi_mz07/assets/Link1.STL" scale="0.001 0.001 0.001"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <joint name="joint2" type="revolute">
+      <origin xyz="0.050 0 0.151" rpy="0 0 0" />
+      <parent link="Link1" />
+      <child link="Link2" />
+      <axis xyz="0 -1 0" />
+      <limit lower="-2.3562" upper="1.3963" effort="${joint_effort}" velocity="${joint_vel}" />
+      <dynamics damping="15.0" friction="1.0"/>
+    </joint>
+
+    <gazebo reference="joint2">
+      <implicitSpringDamper>true</implicitSpringDamper>
+    </gazebo>
+
+    <link name="Link2">
+      <inertial>
+        <origin xyz="-0.01073 -0.00007 0.15607" rpy="0 0 0" />
+        <mass value="15.76199" />
+        <inertia ixx="0.258262" ixy="-3.26533E-05" ixz="-0.000914074"
+                 iyy="0.213749" iyz="0.000285241" izz="0.0751941" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find movensys_manipulator_description)/urdf/nachi_mz07/assets/Link2.STL" scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name=""><color rgba="1 1 1 1" /></material>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find movensys_manipulator_description)/urdf/nachi_mz07/assets/Link2.STL" scale="0.001 0.001 0.001"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <joint name="joint3" type="revolute">
+      <origin xyz="0 0 0.330" rpy="0 0 0" />
+      <parent link="Link2" />
+      <child link="Link3" />
+      <axis xyz="0 -1 0" />
+      <limit lower="-1.15" upper="3.333" effort="${joint_effort}" velocity="${joint_vel}" />
+      <dynamics damping="15.0" friction="1.0"/>
+    </joint>
+
+    <gazebo reference="joint3">
+      <implicitSpringDamper>true</implicitSpringDamper>
+    </gazebo>
+
+    <link name="Link3">
+      <inertial>
+        <origin xyz="-0.00905 -0.00035 0.02055" rpy="0 0 0" />
+        <mass value="7.98792" />
+        <inertia ixx="0.0217876" ixy="6.58537E-05" ixz="0.00247286"
+                 iyy="0.0378571" iyz="0.00010946" izz="0.0296979" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find movensys_manipulator_description)/urdf/nachi_mz07/assets/Link3.STL" scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name=""><color rgba="1 1 1 1" /></material>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find movensys_manipulator_description)/urdf/nachi_mz07/assets/Link3.STL" scale="0.001 0.001 0.001"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <joint name="joint4" type="revolute">
+      <origin xyz="0.091 0 0.045" rpy="0 0 0" />
+      <parent link="Link3" />
+      <child link="Link4" />
+      <axis xyz="1 0 0" />
+      <limit lower="-3.3161" upper="3.3161" effort="${joint_effort}" velocity="${joint_vel}" />
+      <dynamics damping="10.0" friction="1.0"/>
+    </joint>
+
+    <gazebo reference="joint4">
+      <implicitSpringDamper>true</implicitSpringDamper>
+    </gazebo>
+
+    <link name="Link4">
+      <inertial>
+        <origin xyz="0.10654 0.00095 -0.00021" rpy="0 0 0" />
+        <mass value="6.95970" />
+        <inertia ixx="0.0153032" ixy="0.000497983" ixz="4.12101E-06"
+                 iyy="0.0372561" iyz="4.65656E-05" izz="0.0413588" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find movensys_manipulator_description)/urdf/nachi_mz07/assets/Link4.STL" scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name=""><color rgba="1 1 1 1" /></material>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find movensys_manipulator_description)/urdf/nachi_mz07/assets/Link4.STL" scale="0.001 0.001 0.001"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <joint name="joint5" type="revolute">
+      <origin xyz="0.249 0 0" rpy="0 0 0" />
+      <parent link="Link4" />
+      <child link="Link5" />
+      <axis xyz="0 -1 0" />
+      <limit lower="-2.0944" upper="2.0944" effort="${joint_effort}" velocity="${joint_vel}" />
+      <dynamics damping="10.0" friction="1.0"/>
+    </joint>
+
+    <gazebo reference="joint5">
+      <implicitSpringDamper>true</implicitSpringDamper>
+    </gazebo>
+
+    <link name="Link5">
+      <inertial>
+        <origin xyz="0.02306 -0.00456 -0.00002" rpy="0 0 0" />
+        <mass value="1.08255" />
+        <inertia ixx="0.00114319" ixy="0.000116456" ixz="-4.388E-08"
+                 iyy="0.00135133" iyz="-1.72584E-06" izz="0.00148081" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find movensys_manipulator_description)/urdf/nachi_mz07/assets/Link5.STL" scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name=""><color rgba="1 1 1 1" /></material>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find movensys_manipulator_description)/urdf/nachi_mz07/assets/Link5.STL" scale="0.001 0.001 0.001"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <joint name="joint6" type="revolute">
+      <origin xyz="0.065 0 0" rpy="0 0 0" />
+      <parent link="Link5" />
+      <child link="Link6" />
+      <axis xyz="1 0 0" />
+      <limit lower="-3.14" upper="3.14" effort="${joint_effort}" velocity="${joint_vel}" />
+      <dynamics damping="5.0" friction="0.5"/>
+    </joint>
+
+    <gazebo reference="joint6">
+      <implicitSpringDamper>true</implicitSpringDamper>
+    </gazebo>
+
+    <link name="Link6">
+      <inertial>
+        <origin xyz="0.00558 -0.00007 0.00028" rpy="0 0 0" />
+        <mass value="0.24242" />
+        <inertia ixx="0.000171778" ixy="2.105E-08" ixz="-7.513E-08"
+                 iyy="8.87059E-05" iyz="5.6478E-07" izz="9.23374E-05" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find movensys_manipulator_description)/urdf/nachi_mz07/assets/Link6.STL" scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name=""><color rgba="1 1 1 1" /></material>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find movensys_manipulator_description)/urdf/nachi_mz07/assets/Link6.STL" scale="0.001 0.001 0.001"/>
+        </geometry>
+      </collision>
+    </link>
+
+  </xacro:macro>
+
+</robot>
