@@ -18,3 +18,4 @@ sim_bridge:
     set_gripper_service: /wmx/set_gripper
     action_name: /movensys_manipulator_arm_controller/follow_joint_trajectory
     servo_command_topic: /movensys_manipulator_arm_controller/joint_trajectory
+    dynamic_trajectory_topic: /dynamic_trajectory_controller/joint_trajectory

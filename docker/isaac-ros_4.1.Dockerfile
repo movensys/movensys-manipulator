@@ -86,8 +86,23 @@ RUN apt-get update && \
         ultralytics \
         pyapriltags
 
-# torch cu130 (needed for Thor / sm_110) breaks the prebuilt curobo binary via a
-# c10 ABI change, forcing a JIT rebuild that fails on the helper_math.h lerp vs
-# C++20 std::lerp clash. Patch helper_math.h so the JIT build succeeds.
 COPY fix_curobo_lerp.sh /tmp/fix_curobo_lerp.sh
 RUN chmod +x /tmp/fix_curobo_lerp.sh && /tmp/fix_curobo_lerp.sh && rm /tmp/fix_curobo_lerp.sh
+
+ARG CUROBO_V2_COMMIT=78fd485fa82d9b9a063fb4985e371814587e666a
+ARG WARP_VERSION=1.17.0
+RUN if [ "$(dpkg --print-architecture)" = "arm64" ]; then WARP_PLATFORM=manylinux_2_34_aarch64; \
+    else WARP_PLATFORM=manylinux_2_28_x86_64; fi && \
+    python3 -m pip freeze | grep -iE '^(torch|torchvision|numpy|nvidia-|cuda-)' | grep -v ' @ ' \
+      > /tmp/curobo_v2_constraints.txt && \
+    PIP="python3 -m pip install --no-cache-dir --break-system-packages -c /tmp/curobo_v2_constraints.txt" && \
+    $PIP --no-deps \
+      "https://github.com/NVIDIA/warp/releases/download/v${WARP_VERSION}/warp_lang-${WARP_VERSION}+cu13-py3-none-${WARP_PLATFORM}.whl" && \
+    $PIP "cuda-core[cu13]>=0.7" numpy-quaternion trimesh "scipy>=1.7.0" "yourdfpy>=0.0.53" \
+      importlib_resources networkx tqdm setuptools_scm && \
+    git clone https://github.com/NVlabs/curobo.git /opt/curobo_v2 && \
+    git -C /opt/curobo_v2 checkout -q ${CUROBO_V2_COMMIT} && \
+    chmod -R a+rX /opt/curobo_v2 && \
+    rm /tmp/curobo_v2_constraints.txt && \
+    PYTHONPATH=/opt/curobo_v2 python3 -c "import curobo, warp, torch; print('cuRoboV2', curobo.__version__, 'warp', warp.__version__, 'torch', torch.__version__)"
+ENV CUROBO_V2_PATH=/opt/curobo_v2

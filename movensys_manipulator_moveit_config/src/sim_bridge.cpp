@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <sstream>
@@ -41,7 +42,8 @@ public:
 private:
   void cbJointStates(const sensor_msgs::msg::JointState::SharedPtr msg);
   void cbServoCommand(const trajectory_msgs::msg::JointTrajectory::SharedPtr msg);
-
+  void cbDynamicTrajectory(const trajectory_msgs::msg::JointTrajectory::SharedPtr msg);
+  void followDynamicTrajectory();
 
   void publishJointCommand(
     const std::vector<double> & arm_positions,
@@ -76,6 +78,9 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr sub_joint_state_;
   rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr set_gripper_srv_;
   rclcpp::Subscription<trajectory_msgs::msg::JointTrajectory>::SharedPtr sub_servo_;
+  rclcpp::Subscription<trajectory_msgs::msg::JointTrajectory>::SharedPtr sub_dynamic_;
+  rclcpp::TimerBase::SharedPtr dynamic_timer_;
+  std::deque<std::pair<rclcpp::Time, trajectory_msgs::msg::JointTrajectory>> dynamic_trajectories_;
   rclcpp_action::Server<FollowJT>::SharedPtr action_server_;
 
   std::atomic<bool> in_execution_{false};
@@ -100,6 +105,7 @@ SimBridge::SimBridge()
   this->declare_parameter("set_gripper_service", "/set_gripper_service/no_topic");
   this->declare_parameter("action_name", "/action_name/no_action");
   this->declare_parameter("servo_command_topic", "/servo_command_topic/no_topic");
+  this->declare_parameter("dynamic_trajectory_topic", "/dynamic_trajectory_topic/no_topic");
 
   joint_names_ = this->get_parameter("joint_names").as_string_array();
   gripper_joint_names_ = this->get_parameter("gripper_joint_names").as_string_array();
@@ -111,6 +117,8 @@ SimBridge::SimBridge()
   const auto set_gripper_service = this->get_parameter("set_gripper_service").as_string();
   const auto action_name = this->get_parameter("action_name").as_string();
   const auto servo_command_topic = this->get_parameter("servo_command_topic").as_string();
+  const auto dynamic_trajectory_topic =
+    this->get_parameter("dynamic_trajectory_topic").as_string();
 
   gripper_state_ = gripper_open_;
 
@@ -141,6 +149,12 @@ SimBridge::SimBridge()
   sub_servo_ = this->create_subscription<trajectory_msgs::msg::JointTrajectory>(
     servo_command_topic, 10,
     std::bind(&SimBridge::cbServoCommand, this, std::placeholders::_1));
+
+  sub_dynamic_ = this->create_subscription<trajectory_msgs::msg::JointTrajectory>(
+    dynamic_trajectory_topic, 10,
+    std::bind(&SimBridge::cbDynamicTrajectory, this, std::placeholders::_1));
+  dynamic_timer_ = this->create_wall_timer(
+    10ms, std::bind(&SimBridge::followDynamicTrajectory, this));
 
   pub_servo_reset_ = this->create_publisher<control_msgs::msg::JointJog>(
     "/servo_node/delta_joint_cmds", 10);
@@ -226,6 +240,73 @@ void SimBridge::cbServoCommand(const trajectory_msgs::msg::JointTrajectory::Shar
   }
   const auto & pt = msg->points.back();
   publishJointCommand(pt.positions, pt.velocities);
+}
+
+void SimBridge::cbDynamicTrajectory(const trajectory_msgs::msg::JointTrajectory::SharedPtr msg)
+{
+  if (msg->points.empty()) {
+    return;
+  }
+  rclcpp::Time start(msg->header.stamp, this->get_clock()->get_clock_type());
+  if (start.nanoseconds() == 0) {
+    start = this->get_clock()->now();
+  }
+  dynamic_trajectories_.emplace_back(start, *msg);
+  while (dynamic_trajectories_.size() > 5) {
+    dynamic_trajectories_.pop_front();
+  }
+}
+
+void SimBridge::followDynamicTrajectory()
+{
+  if (dynamic_trajectories_.empty() || in_execution_.load()) {
+    return;
+  }
+  const rclcpp::Time now = this->get_clock()->now();
+  const std::pair<rclcpp::Time, trajectory_msgs::msg::JointTrajectory> * active = nullptr;
+  for (const auto & item : dynamic_trajectories_) {
+    if (item.first <= now) {
+      active = &item;
+    }
+  }
+  if (active == nullptr) {
+    return;
+  }
+
+  const auto & traj = active->second;
+  const double t = (now - active->first).seconds();
+  size_t k = 0;
+  while (k + 1 < traj.points.size() &&
+    rclcpp::Duration(traj.points[k + 1].time_from_start).seconds() <= t)
+  {
+    ++k;
+  }
+  const auto & p0 = traj.points[k];
+  const auto & p1 = traj.points[std::min(k + 1, traj.points.size() - 1)];
+  const double t0 = rclcpp::Duration(p0.time_from_start).seconds();
+  const double t1 = rclcpp::Duration(p1.time_from_start).seconds();
+  const double s = t1 > t0 ? std::clamp((t - t0) / (t1 - t0), 0.0, 1.0) : 1.0;
+
+  std::vector<double> positions(joint_names_.size(), 0.0);
+  std::vector<double> velocities(joint_names_.size(), 0.0);
+  const auto current = currentArmPositions();
+  for (size_t i = 0; i < joint_names_.size(); ++i) {
+    auto it = std::find(traj.joint_names.begin(), traj.joint_names.end(), joint_names_[i]);
+    if (it == traj.joint_names.end()) {
+      positions[i] = current[i];
+      continue;
+    }
+    const size_t j = std::distance(traj.joint_names.begin(), it);
+    positions[i] = p0.positions[j] + s * (p1.positions[j] - p0.positions[j]);
+    if (j < p0.velocities.size() && j < p1.velocities.size()) {
+      velocities[i] = p0.velocities[j] + s * (p1.velocities[j] - p0.velocities[j]);
+    }
+  }
+  publishJointCommand(positions, velocities);
+
+  if (t > rclcpp::Duration(traj.points.back().time_from_start).seconds()) {
+    dynamic_trajectories_.clear();
+  }
 }
 
 void SimBridge::resetServo()

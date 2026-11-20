@@ -113,3 +113,18 @@ RUN apt-get update && \
         pyyaml \
         ultralytics \
         pyapriltags
+
+ARG CUROBO_V2_COMMIT=78fd485fa82d9b9a063fb4985e371814587e666a
+ARG WARP_VERSION=1.17.0
+RUN python3 -m pip freeze | grep -iE '^(torch|torchvision|numpy|nvidia-|cuda-)' | grep -v ' @ ' \
+      > /tmp/curobo_v2_constraints.txt && \
+    PIP="python3 -m pip install --no-cache-dir --break-system-packages -c /tmp/curobo_v2_constraints.txt" && \
+    $PIP --no-deps "warp-lang==${WARP_VERSION}" && \
+    $PIP "cuda-core[cu12]>=0.7" numpy-quaternion trimesh "scipy>=1.7.0" "yourdfpy>=0.0.53" \
+      importlib_resources networkx tqdm setuptools_scm && \
+    git clone https://github.com/NVlabs/curobo.git /opt/curobo_v2 && \
+    git -C /opt/curobo_v2 checkout -q ${CUROBO_V2_COMMIT} && \
+    chmod -R a+rX /opt/curobo_v2 && \
+    rm /tmp/curobo_v2_constraints.txt && \
+    PYTHONPATH=/opt/curobo_v2 python3 -c "import curobo, warp, torch; print('cuRoboV2', curobo.__version__, 'warp', warp.__version__, 'torch', torch.__version__)"
+ENV CUROBO_V2_PATH=/opt/curobo_v2

@@ -62,6 +62,7 @@ numbers match the Isaac Sim scene names in
 | 6  | AprilTag + Nvblox                 | [6a](doc/6a_apriltag_nvblox_simulation.md)            | [6b](doc/6b_apriltag_nvblox_hil.md)            | [6c](doc/6c_apriltag_nvblox_real.md)            |
 | 7  | VLA application (RoboPoly)        | [1a](https://github.com/movensys/movensys-intelligence/blob/main/movensys_sample/doc/1a_robopoly_simulation.md) | n/a              | [1c](https://github.com/movensys/movensys-intelligence/blob/main/movensys_sample/doc/1c_robopoly_real.md) |
 | 8  | YOLO pick-and-place               | [8a](doc/8a_yolo_simulation.md)                       | [8b](doc/8b_yolo_hil.md)                       | [8c](doc/8c_yolo_real.md)                       |
+| 10 | cuRoboV2 obstacle avoidance       | [10a](doc/10a_curobo_simulation.md)                   | [10b](doc/10b_curobo_hil.md)                   | [10c](doc/10c_curobo_real.md)                   |
 
 Also provided:
 
