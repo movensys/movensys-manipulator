@@ -1,0 +1,92 @@
+{
+ "8": {
+  "spheres": [
+   {
+    "link": "tool_gripper",
+    "center": [
+     -0.01897,
+     -0.00101,
+     0.01503
+    ],
+    "radius": 0.04548
+   },
+   {
+    "link": "tool_camera",
+    "center": [
+     -0.02745,
+     -0.0616,
+     0.01674
+    ],
+    "radius": 0.03893
+   },
+   {
+    "link": "tool_gripper",
+    "center": [
+     0.01544,
+     -0.00258,
+     0.09794
+    ],
+    "radius": 0.0469
+   },
+   {
+    "link": "tool_camera",
+    "center": [
+     0.02732,
+     -0.05971,
+     0.0151
+    ],
+    "radius": 0.0417
+   },
+   {
+    "link": "tool_gripper",
+    "center": [
+     -0.01969,
+     0.00138,
+     0.085
+    ],
+    "radius": 0.04597
+   },
+   {
+    "link": "tool_gripper",
+    "center": [
+     -0.04263,
+     0.00038,
+     0.14885
+    ],
+    "radius": 0.0464
+   },
+   {
+    "link": "tool_gripper",
+    "center": [
+     0.04135,
+     -0.0007,
+     0.15018
+    ],
+    "radius": 0.04636
+   },
+   {
+    "link": "tool_gripper",
+    "center": [
+     0.01603,
+     0.00175,
+     0.02305
+    ],
+    "radius": 0.0458
+   }
+  ],
+  "outside_max_mm": 0.0,
+  "thick_med_mm": 15.4,
+  "thick_p95_mm": 29.8,
+  "thick_max_mm": 39.4,
+  "r_max_mm": 46.9,
+  "tip_z_mm": 196.5,
+  "x_mm": [
+   -89.0,
+   87.7
+  ],
+  "y_mm": [
+   -101.4,
+   47.6
+  ]
+ }
+}

@@ -1,0 +1,81 @@
+{
+ "cover_k": "8",
+ "tool": {
+  "tool_bracket": {
+   "n_spheres": 8,
+   "outside_frac": 0.0,
+   "outside_p99_mm": 0.0,
+   "outside_max_mm": 0.0
+  },
+  "tool_camera": {
+   "n_spheres": 8,
+   "outside_frac": 0.0,
+   "outside_p99_mm": 0.0,
+   "outside_max_mm": 0.0
+  },
+  "tool_gripper": {
+   "n_spheres": 8,
+   "outside_frac": 0.0,
+   "outside_p99_mm": 0.0,
+   "outside_max_mm": 0.0
+  }
+ },
+ "arm": {
+  "Link1": {
+   "n_spheres": 11,
+   "outside_frac": 0.1035,
+   "outside_p99_mm": 4.02,
+   "outside_max_mm": 7.21
+  },
+  "Link2": {
+   "n_spheres": 20,
+   "outside_frac": 0.2067,
+   "outside_p99_mm": 5.37,
+   "outside_max_mm": 6.78
+  },
+  "Link3": {
+   "n_spheres": 7,
+   "outside_frac": 0.3586,
+   "outside_p99_mm": 5.26,
+   "outside_max_mm": 7.79
+  },
+  "Link4": {
+   "n_spheres": 5,
+   "outside_frac": 0.0707,
+   "outside_p99_mm": 3.98,
+   "outside_max_mm": 9.76
+  },
+  "Link5": {
+   "n_spheres": 7,
+   "outside_frac": 0.1149,
+   "outside_p99_mm": 4.37,
+   "outside_max_mm": 11.3
+  },
+  "Link6": {
+   "n_spheres": 6,
+   "outside_frac": 0.1436,
+   "outside_p99_mm": 5.15,
+   "outside_max_mm": 8.95
+  }
+ },
+ "ignore_added": [
+  "Link4-tool_camera",
+  "Link4-tool_gripper",
+  "Link5-tool_camera",
+  "Link5-tool_gripper",
+  "Link6-tool_bracket",
+  "Link6-tool_camera",
+  "Link6-tool_gripper",
+  "tool_camera-tool_gripper"
+ ],
+ "self_check_pairs": [
+  "Link1-tool_camera",
+  "Link1-tool_gripper",
+  "Link2-tool_camera",
+  "Link2-tool_gripper",
+  "Link3-tool_camera",
+  "Link3-tool_gripper",
+  "base_link-tool_camera",
+  "base_link-tool_gripper"
+ ]
+}

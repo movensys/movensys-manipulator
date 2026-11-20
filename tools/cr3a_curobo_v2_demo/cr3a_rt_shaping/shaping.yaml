@@ -1,0 +1,18 @@
+# ★ GUI (cr3a_gui/rt_server.py) 는 이 파일을 안 씀 — GUI 의 성형기는 cr3a_gui/shaper_def.py (GUI 에서 고름). 1 ms 격자 규칙도 다름:
+#   여기 (rt_shaping.to_grid) 는 격자 사이 임펄스를 양옆 두 칸에 거리 비율로 나누고, shaper_def 는 가장 가까운 칸 하나로 반올림 ([2026-10-27 R-1])
+# 입력성형 설정 — rt_run.py 가 읽음 (rt_shaping.load_cfg). 명령줄 --shaper / --shaper-hz / --shaper-zeta 가 있으면 그 값이 우선.
+#   tools/rt_demo.sh 에서는 SHAPER=ZV SHAPER_HZ="8 15" SHAPER_ZETA=0.02 tools/rt_demo.sh  (또는 SHAPING_FILE=<다른 파일>)
+#
+# method : none | ZV | ZVD | EI | ETM4 | ETM5
+#          하나면 모든 주파수에 같은 방식, 주파수마다 다르게 하려면 목록 (예: [ZVD, ZV])
+# freq_hz: 없앨 진동 주파수 (Hz). 2 개 이상이면 주파수마다 성형기를 만들어 임펄스를 컨볼루션 (임펄스 수 = 곱, 길이 = 합)
+# zeta   : 감쇠비. 하나면 모든 주파수에 같게, 아니면 주파수마다
+# ei_vtol: EI 가 설계 주파수에서 남기는 잔류 진동 비 (0.05 = 5 %, 대신 주파수 오차에 가장 둔감)
+# etm_m  : ETM4·ETM5 의 m (마지막 임펄스 벡터 = m × 첫 임펄스 벡터, Kang 2019). 1 이 견디는 주파수 범위가 가장 넓음
+# grid_ms: 임펄스를 놓는 격자 = WMX 통신 주기. 격자 사이 임펄스는 양옆 두 칸에 거리 비율로 나눠 넣고 같은 칸끼리 더함
+method: ZVD
+freq_hz: [8.0]
+zeta: [0.02]
+ei_vtol: 0.05
+etm_m: 1.0
+grid_ms: 1.0

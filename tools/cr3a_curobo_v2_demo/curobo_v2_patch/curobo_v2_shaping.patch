@@ -1,0 +1,94 @@
+diff --git a/curobo/_src/rollout/cost_manager/cost_manager_robot.py b/curobo/_src/rollout/cost_manager/cost_manager_robot.py
+index 34976bc..9e36153 100644
+--- a/curobo/_src/rollout/cost_manager/cost_manager_robot.py
++++ b/curobo/_src/rollout/cost_manager/cost_manager_robot.py
+@@ -192,6 +192,14 @@ class RobotCostManager:
+ 
+     # -- Compute costs --
+ 
++    def set_reference_tracking(
++        self, ref: torch.Tensor, weight: torch.Tensor, ref_u: torch.Tensor = None, weight_u: torch.Tensor = None
++    ) -> None:
++        """[cr3a_rt_shaping 2026-10-14] 상태 궤적 점마다 기준 관절값 ref [H, dof] 을 따라가는 비용 weight [H] · |q − ref|².
++        입력성형 (RobotStateTransition.set_input_shaper) 이 켜져 있으면 q = 성형된 y (로봇이 실제로 가는 궤적) — 성형 지연을 최적화기가
++        미리 보상. 부르는 쪽이 매 최적화 전에 같은 텐서에 copy_ 로 채운다 (CUDA graph)."""
++        self._ref_track = {"ref": ref, "weight": weight, "ref_u": ref_u, "weight_u": weight_u}
++
+     def compute_costs(
+         self,
+         state: RobotState,
+@@ -257,6 +265,19 @@ class RobotCostManager:
+                     )
+                     cost_collection.add(cost_value, "cspace")
+ 
++        # [cr3a_rt_shaping 2026-10-14] 시간 기준 궤적 따라가기 (set_reference_tracking): 입력성형이 켜져 있으면 성형된 y 로
++        rt = getattr(self, "_ref_track", None)
++        if rt is not None:
++            y_pos = getattr(state, "shaped_position", None)
++            pos = state.joint_state.position if y_pos is None else y_pos
++            d = pos - rt["ref"]
++            cost_collection.add((rt["weight"] * (d * d).sum(-1)).unsqueeze(-1), "ref_track")
++            if rt["ref_u"] is not None:
++                # 성형 전 u 도 (지연 없는) 기준을 약하게 따라가게: y 비용만으로는 성형기가 지우는 주파수 성분이 u 에 섞여도 안 보여
++                # 그 방향이 막히지 않음 (2026-10-14 실측: 8 Hz 성형기 5 종 모두 u 가 크게 흔들림)
++                du = state.joint_state.position - rt["ref_u"]
++                cost_collection.add((rt["weight_u"] * (du * du).sum(-1)).unsqueeze(-1), "ref_track_u")
++
+         # Self-collision
+         if self.has_cost("self_collision"):
+             self_collision_cost = self.get_cost("self_collision")
+diff --git a/curobo/_src/transition/robot_state_transition.py b/curobo/_src/transition/robot_state_transition.py
+index 0597636..1d45dfb 100644
+--- a/curobo/_src/transition/robot_state_transition.py
++++ b/curobo/_src/transition/robot_state_transition.py
+@@ -166,6 +166,22 @@ class RobotStateTransition:
+ 
+         self.state_filter = JointStateFilter(self.config.state_filter_cfg)
+         self._initialize_robot_cmd_state()
++        self._input_shaper = None  # [cr3a_rt_shaping 2026-10-14] set_input_shaper 설명
++
++    def set_input_shaper(
++        self, w_u: torch.Tensor, w_hist: torch.Tensor, hist: torch.Tensor
++    ) -> None:
++        """[cr3a_rt_shaping 2026-10-14] 입력성형기를 최적화 안에 넣는다 (성형된 경로를 최적화).
++
++        상태 궤적 u (B-스플라인, 성형 전 명령) 에서 성형된 궤적 y = w_u @ u + w_hist @ hist 를 만들어 기구학 (충돌 구·도구 자세)
++        을 y 로 계산하고, 관절 상태 비용 (위치·속도·가속·저크 한계, 매끄러움, 목표) 은 u 로 계산한다 (RobotState.joint_state = u).
++        hist = 시작 전에 이미 실행된 u (오래된 것부터, 상태 궤적 점 간격) — 부르는 쪽이 매 최적화 전에 같은 텐서에 copy_ 로 채운다
++        (CUDA graph 가 같은 메모리를 다시 읽음). w_u [H, H], w_hist [H, Hh], hist [Hh, dof]. CUDA graph 를 잡기 전에 (첫 풀기 전에) 부를 것.
++        """
++        self._input_shaper = {"w_u": w_u, "w_hist": w_hist, "hist": hist}
++
++    def clear_input_shaper(self) -> None:
++        self._input_shaper = None
+ 
+     def _create_dynamics(self):
+         """Create robot dynamics model from robot config's dynamics configuration.
+@@ -362,6 +378,27 @@ class RobotStateTransition:
+                 goal_state_idx=goal_state_idx,
+                 use_implicit_goal_state=use_implicit_goal_state,
+             )
++        if self._input_shaper is not None:
++            # [cr3a_rt_shaping 2026-10-14] 기구학·충돌은 성형된 y 로, 관절 상태 비용은 성형 전 u 로 (set_input_shaper 설명)
++            s = self._input_shaper
++            # 행렬곱 (torch.matmul) 을 쓰지 않음: cuRobo 를 불러오면 float32 행렬곱이 TF32 로 바뀌어 (allow_tf32 True,
++            #  precision high) 항등 행렬을 곱해도 값이 최대 2.4e-4 틀어지고, 그 잡음이 최적화를 흐려 MPC 가 헤맸다 (2026-10-14 실측:
++            #  항등 성형기로도 관절 이동 198° → 847°). 원소별 곱·합은 float32 그대로
++            y_pos = (s["w_u"][None, :, :, None] * state_seq.position[:, None, :, :]).sum(2) + (
++                s["w_hist"][:, :, None] * s["hist"][None, :, :]
++            ).sum(1)
++            y_seq = JointState(
++                position=y_pos,
++                velocity=state_seq.velocity,
++                acceleration=state_seq.acceleration,
++                jerk=state_seq.jerk,
++                joint_names=state_seq.joint_names,
++                dt=state_seq.dt,
++            )
++            state = self.compute_augmented_state(y_seq, idxs_env=idxs_env)
++            state.joint_state = state_seq
++            state.shaped_position = y_pos  # 기준 궤적 비용 (cost_manager_robot.set_reference_tracking) 이 씀
++            return state
+         state = self.compute_augmented_state(state_seq, idxs_env=idxs_env)
+         return state
+ 

@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CR3A 회피 재생</title>
+<!-- [만듦 2026-10-13] make_report.py 가 아래 DATA 를 채워 viewer.html 을 만든다. 3D 로봇은 WMX 엔진 축 로그 값으로 움직인다 -->
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --ink: #1d2330; --muted: #5d6676; --line: #dfe3ea;
+  --accent: #2f6fde; --chart-bg: #ffffff; --grid: #eceff4;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12151b; --panel: #1b2029; --ink: #e8ebf1; --muted: #9aa3b2; --line: #2c3340;
+    --accent: #6a9bff; --chart-bg: #1b2029; --grid: #262c37;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12151b; --panel: #1b2029; --ink: #e8ebf1; --muted: #9aa3b2; --line: #2c3340;
+  --accent: #6a9bff; --chart-bg: #1b2029; --grid: #262c37;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif; }
+header { padding: 14px 18px 6px; }
+h1 { font-size: 18px; margin: 0 0 2px; }
+.sub { color: var(--muted); font-size: 12.5px; }
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 10px; padding: 0 18px; }
+#view { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; min-height: 460px; overflow: hidden; }
+#view canvas { display: block; }
+#legend { position: absolute; left: 10px; top: 8px; font-size: 12px; color: var(--muted); background: color-mix(in srgb, var(--panel) 80%, transparent); padding: 4px 8px; border-radius: 6px; }
+#legend span { display: inline-block; margin-right: 10px; }
+#legend i { display: inline-block; width: 18px; height: 3px; vertical-align: middle; margin-right: 4px; border-radius: 2px; }
+.side { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.side h3 { margin: 4px 0 6px; font-size: 13px; }
+.row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 4px 0; }
+button, select { font: inherit; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); cursor: pointer; }
+button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+input[type=range] { width: 100%; }
+label { cursor: pointer; user-select: none; }
+#now { font-variant-numeric: tabular-nums; }
+#jt { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+#jt th, #jt td { padding: 2px 4px; text-align: right; border-bottom: 1px solid var(--line); }
+#jt th:first-child, #jt td:first-child { text-align: left; }
+.trials { padding: 10px 18px 0; }
+.trials .box { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+.trials h3 { margin: 2px 0 6px; font-size: 13px; }
+.trials .scroll { max-height: 260px; overflow: auto; }
+#tt { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+#tt th { position: sticky; top: 0; background: var(--panel); color: var(--muted); font-weight: 600; text-align: right; padding: 3px 6px; border-bottom: 1px solid var(--line); }
+#tt td { text-align: right; padding: 3px 6px; border-bottom: 1px solid var(--line); }
+#tt th:nth-child(2), #tt td:nth-child(2), #tt th:last-child, #tt td:last-child { text-align: left; }
+#tt tr.run { cursor: pointer; }
+#tt tr.run:hover td { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+#tt tr.sel td { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+#tt tr.fail td { color: var(--muted); }
+.charts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 10px 18px 18px; }
+.chart { background: var(--chart-bg); border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px 4px; }
+.chart.wide { grid-column: 1 / -1; }
+.chart h4 { margin: 2px 0 2px; font-size: 12.5px; }
+.chart .note { color: var(--muted); font-size: 11.5px; margin-bottom: 2px; }
+.chart canvas { width: 100%; height: 190px; display: block; cursor: crosshair; }
+.keys { font-size: 11.5px; color: var(--muted); }
+.keys span { margin-right: 8px; white-space: nowrap; }
+.keys i { display: inline-block; width: 12px; height: 3px; vertical-align: middle; margin-right: 3px; }
+@media (max-width: 900px) {
+  .main { grid-template-columns: 1fr; }
+  .charts { grid-template-columns: 1fr; }
+  header, .main, .trials, .charts { padding-left: 16px; padding-right: 16px; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">CR3A 장애물 회피 — WMX 로그 재생</h1>
+  <div class="sub">cuRoboV2 계획 → R2 궤적 액션 (StartCSplinePos) → WMX 시뮬레이터. 3D 로봇과 그래프는 WMX 엔진이 1 ms 마다 남긴 축 로그 값이다.</div>
+</header>
+<section class="main">
+  <div id="view"><div id="legend"></div></div>
+  <div class="side">
+    <h3>재생</h3>
+    <div class="row">
+      <button id="play">▶ 재생</button>
+      <select id="speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select>
+      <span id="now"></span>
+    </div>
+    <input type="range" id="slider" min="0" max="1000" value="0">
+    <div class="row" id="ranges"></div>
+    <h3>로봇을 움직이는 값</h3>
+    <div class="row">
+      <label><input type="radio" name="src" value="fb" checked> WMX 실제 위치 (FBPOS)</label>
+      <label><input type="radio" name="src" value="cmd"> WMX 명령 위치 (CMDPOS)</label>
+    </div>
+    <h3>겹쳐 보기</h3>
+    <div class="row"><label><input type="checkbox" id="ghostPlan" checked> cuRobo 계획 (초록)</label></div>
+    <div class="row"><label><input type="checkbox" id="showSph"> 충돌 구</label>
+      <label><input type="checkbox" id="showPath" checked> 도구 경로</label></div>
+    <h3>지금</h3>
+    <div id="nowInfo" class="sub"></div>
+    <table id="jt"></table>
+  </div>
+</section>
+<section class="trials" id="trialsSec" hidden>
+  <div class="box"><h3>동작 목록 (누르면 그 동작으로)</h3><div class="scroll"><table id="tt"></table></div></div>
+</section>
+<section class="charts">
+  <div class="chart wide"><h4>관절 위치 (°, 각변위)</h4><div class="note">실선 = WMX 실제 위치 (FBPOS), 점선 = cuRobo 계획</div><canvas id="c_pos"></canvas><div class="keys" id="k_pos"></div></div>
+  <div class="chart"><h4>WMX 명령 − cuRobo 계획 (mrad, 각변위)</h4><div class="note">CMDPOS − 계획. 점 = 계획 점 시각에서. 선 = 1 ms 로그마다, 계획 점 사이는 3차 곡선(위치+속도)으로 이어 비교</div><canvas id="c_cp"></canvas><div class="keys" id="k_cp"></div></div>
+  <div class="chart"><h4>WMX 실제 − 명령 (mrad, 각변위)</h4><div class="note">FBPOS − CMDPOS, 같은 1 ms 로그 줄끼리 (추종 오차)</div><canvas id="c_fc"></canvas><div class="keys" id="k_fc"></div></div>
+</section>
+<script>/*__DATA__*/</script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+
+const D = window.DATA;
+if (!D) {   // [추가 2026-10-13] 틀 파일을 그대로 열면 빈 화면이라 사용자가 헷갈렸음 → 안내
+  document.body.innerHTML = `<div style="padding:40px;font:15px/1.6 system-ui,'Malgun Gothic',sans-serif">
+    <h2>이 파일은 보고서 <b>틀</b>입니다 (데이터 없음)</h2>
+    <p>보고서는 <code>make_report.py</code> 가 이 틀에 WMX 로그를 채워 만듭니다.</p>
+    <ul><li>실행 결과 폴더: <code>~/workspaces/wmx_r2_logs/cr3a_…/viewer.html</code> (Thor)</li>
+    <li>PC 사본: <code>Thor 데모\\보고서\\</code>, <code>Thor 데모\\cr3a_sim\\results\\…\\viewer.html</code></li></ul></div>`;
+  throw new Error('보고서 틀 — DATA 없음');
+}
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const JC = ['#4e79a7', '#f28e2b', '#59a14f', '#e15759', '#b07aa1', '#76b7b2'];
+const deg = r => r * 180 / Math.PI;
+document.getElementById('title').textContent = D.title;
+const T = D.t, N = T.length;
+
+// ---------- 계획을 로그 시각에 맞추기 ----------
+function planAt(t) {           // 로그 시각 t → (계획 q, 동작 번호) 또는 null
+  // 계획 점 사이는 3차 곡선(Hermite: 점마다 위치 + 속도)으로 잇는다. [바꿈 2026-10-13] 직선으로 이었더니 WMX 스플라인과
+  //  점 사이에서 '가속 × 간격² ÷ 8' 만큼 어긋나 20 ms 톱니가 보였음
+  for (let k = 0; k < D.plans.length; k++) {
+    const p = D.plans[k], dur = (p.q.length - 1) * p.dt;
+    if (t >= p.t0 - 1e-9 && t <= p.t0 + dur + 1e-9) {
+      const x = Math.max(0, (t - p.t0) / p.dt), i = Math.min(Math.floor(x), p.q.length - 2), s = Math.min(1, x - i);
+      const h00 = 2 * s ** 3 - 3 * s ** 2 + 1, h10 = s ** 3 - 2 * s ** 2 + s, h01 = -2 * s ** 3 + 3 * s ** 2, h11 = s ** 3 - s ** 2;
+      const q = p.v
+        ? p.q[i].map((q0, j) => h00 * q0 + h10 * p.dt * p.v[i][j] + h01 * p.q[i + 1][j] + h11 * p.dt * p.v[i + 1][j])
+        : p.q[i].map((q0, j) => q0 + (p.q[i + 1][j] - q0) * s);
+      return { q, k, s: (t - p.t0) / dur };
+    }
+  }
+  return null;
+}
+function lastPlanBefore(t) {   // 구간 밖이면 그 전 동작의 마지막 계획 점
+  let q = null;
+  for (const p of D.plans) if (t >= p.t0) q = p.q[p.q.length - 1];
+  return q || (D.plans.length ? D.plans[0].q[0] : null);
+}
+const cmdMinusPlan = [], fbMinusCmd = [];
+for (let i = 0; i < N; i++) {
+  const pa = planAt(T[i]);
+  cmdMinusPlan.push(pa ? D.cmd[i].map((v, j) => (v - pa.q[j]) * 1000) : null);
+  fbMinusCmd.push(D.fb[i].map((v, j) => (v - D.cmd[i][j]) * 1000));
+}
+
+// [바꿈 2026-10-13] 사용자 요청으로 뺀 것: 맨 위 요약 상자, 직선 보간(빨강 로봇·경로), 상자까지 거리 그래프.
+//  수치 요약은 같은 폴더의 summary.json 에 그대로 남는다.
+
+// ---------- 3D ----------
+const view = document.getElementById('view');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+view.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(40, 1, 0.01, 20);
+camera.up.set(0, 0, 1);
+camera.position.set(1.15, -1.0, 0.85);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0.25, 0, 0.25);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x666677, 1.6));
+const dl = new THREE.DirectionalLight(0xffffff, 1.6); dl.position.set(1, -1, 2); scene.add(dl);
+function setBg() { scene.background = new THREE.Color(css('--panel')); }
+setBg();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { setBg(); drawAllCharts(); });
+
+// 바닥 · 상자. [바꿈 2026-10-13] 랜덤 왕복 시험은 동작마다 상자 위치가 달라서, 상자 하나를 시각에 맞춰 옮긴다
+//  동작 k 의 상자는 동작 k-1 이 끝난 뒤(= 그 상자를 놓고 계획한 때)부터 보인다. 바닥 아래로 치운 상자(z < -1)는 숨김
+const grid = new THREE.GridHelper(1.6, 16, 0x8892a0, 0x8892a0); grid.rotation.x = Math.PI / 2; grid.material.opacity = 0.35; grid.material.transparent = true; scene.add(grid);
+// [바꿈 2026-10-13] 장애물이 동작마다 여러 개·크기·자세가 달라서, 동작마다 장애물 묶음을 만들어 두고 그 동작 것만 보인다
+const OBS_COLOR = { '기둥': 0xd9534f, '벽': 0xe08a2e, '판': 0x8e6bd6, '떠 있는 상자': 0x2f9fb3, '상자': 0xd9534f };
+function obstacleGroup(list) {
+  const g = new THREE.Group();
+  for (const o of list) {
+    const geo = new THREE.BoxGeometry(...o.dims);
+    const col = OBS_COLOR[o.kind] ?? 0xd9534f;
+    const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: col, transparent: true, opacity: 0.55, depthWrite: false }));
+    const e = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0x333333 }));
+    for (const x of [m, e]) { x.position.set(o.pose[0], o.pose[1], o.pose[2]); x.quaternion.set(o.pose[4], o.pose[5], o.pose[6], o.pose[3]); g.add(x); }
+  }
+  g.visible = false; scene.add(g); return g;
+}
+const obsGroups = D.plans.map(p => obstacleGroup(p.obstacles ?? [D.scene.cuboid.box]));
+let obsShown = -1;
+function obsIndexAt(t) {        // 동작 k 의 장애물은 동작 k-1 이 끝난 뒤(= 그것을 놓고 계획한 때)부터
+  for (let k = 0; k < D.plans.length; k++) { const p = D.plans[k]; if (t <= p.t0 + (p.q.length - 1) * p.dt) return k; }
+  return D.plans.length - 1;
+}
+function setObstacles(k) {
+  if (k === obsShown) return;
+  if (obsShown >= 0 && obsGroups[obsShown]) obsGroups[obsShown].visible = false;
+  if (obsGroups[k]) obsGroups[k].visible = true;
+  obsShown = k;
+}
+setObstacles(obsIndexAt(0));
+for (const [p, col] of [[D.A_pos, 0x2f6fde], [D.B_pos, 0x2f6fde]]) {
+  const s = new THREE.Mesh(new THREE.SphereGeometry(0.012), new THREE.MeshBasicMaterial({ color: col })); s.position.set(...p); scene.add(s);
+}
+
+// 로봇 (URDF 관절 사슬 + STL)
+const loader = new STLLoader(), geoms = {};
+for (const [ln, b64] of Object.entries(D.urdf.meshes)) {
+  const bin = atob(b64), buf = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+  geoms[ln] = loader.parse(buf.buffer); geoms[ln].computeVertexNormals();
+}
+function makeRobot(mat, withSpheres) {
+  const groups = {}, joints = {};
+  const root = new THREE.Group(); groups[D.urdf.root] = root;
+  for (const j of D.urdf.joints) {
+    const o = new THREE.Group();
+    o.position.set(...j.xyz); o.quaternion.setFromEuler(new THREE.Euler(j.rpy[0], j.rpy[1], j.rpy[2], 'ZYX'));
+    (groups[j.parent] || root).add(o);
+    const mv = new THREE.Group(); o.add(mv); groups[j.child] = mv;
+    joints[j.name] = { node: mv, axis: new THREE.Vector3(...j.axis).normalize() };
+  }
+  for (const [ln, g] of Object.entries(geoms)) groups[ln] && groups[ln].add(new THREE.Mesh(g, mat));
+  if (withSpheres) {
+    const sm = new THREE.MeshStandardMaterial({ color: 0xf2b134, transparent: true, opacity: 0.35, depthWrite: false });
+    for (const [ln, list] of Object.entries(D.spheres)) for (const s of list) {
+      const m = new THREE.Mesh(new THREE.SphereGeometry(s[3], 16, 12), sm); m.position.set(s[0], s[1], s[2]);
+      m.userData.sph = true; groups[ln] && groups[ln].add(m);
+    }
+  }
+  scene.add(root);
+  return {
+    root, groups,
+    setQ(q) { D.joints.forEach((n, i) => joints[n] && joints[n].node.quaternion.setFromAxisAngle(joints[n].axis, q[i])); },
+    tool() { root.updateMatrixWorld(true); return new THREE.Vector3().setFromMatrixPosition(groups['Link6'].matrixWorld); },
+    showSpheres(on) { root.traverse(o => { if (o.userData.sph) o.visible = on; }); },
+    set visible(v) { root.visible = v; }
+  };
+}
+const robot = makeRobot(new THREE.MeshStandardMaterial({ color: 0xc9cfdb, metalness: 0.2, roughness: 0.55 }), true);
+const ghostPlan = makeRobot(new THREE.MeshStandardMaterial({ color: 0x19a974, transparent: true, opacity: 0.28, depthWrite: false }), false);
+robot.showSpheres(false);
+
+// 도구 경로: WMX 실제, cuRobo 계획 (계획 로봇으로 FK)
+function line(pts, color, dashed) {
+  const g = new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(...p)));
+  const m = dashed ? new THREE.LineDashedMaterial({ color, dashSize: 0.012, gapSize: 0.008 }) : new THREE.LineBasicMaterial({ color });
+  const l = new THREE.Line(g, m); if (dashed) l.computeLineDistances(); scene.add(l); return l;
+}
+const paths = [line(D.tcp_fb, 0x2f6fde, false)];
+for (const p of D.plans) { const pts = p.q.map(q => { ghostPlan.setQ(q); return ghostPlan.tool().toArray(); }); paths.push(line(pts, 0x19a974, true)); }
+const kindsUsed = [...new Set(D.plans.flatMap(p => (p.obstacles ?? [{ kind: '상자' }]).map(o => o.kind)))];
+document.getElementById('legend').innerHTML =
+  `<span><i style="background:#2f6fde"></i>도구 경로 (WMX 실제)</span><span><i style="background:#19a974"></i>cuRobo 계획</span>` +
+  kindsUsed.map(k => `<span><i style="background:#${(OBS_COLOR[k] ?? 0xd9534f).toString(16).padStart(6, '0')};opacity:.7"></i>${k}</span>`).join('');
+
+function resize() {
+  const w = view.clientWidth, h = Math.max(460, Math.min(640, w * 0.62));
+  renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(view); resize();
+
+// ---------- 재생 ----------
+let cur = 0, playing = false, last = 0, rangeK = -1;
+const slider = document.getElementById('slider');
+const src = () => document.querySelector('input[name=src]:checked').value;
+const ranges = document.getElementById('ranges');
+const tr = [[0, T[N - 1]], ...D.segments.map(([a, b]) => [Math.max(0, a - 0.3), Math.min(T[N - 1], b + 0.5)])];
+let xr = tr[0];
+function selectRange(k) {      // k = 0: 전체, k >= 1: k 번째로 실행된 동작
+  [...ranges.children].forEach((x, j) => x.classList.toggle('on', j === k));
+  document.querySelectorAll('#tt tr.run').forEach(r => r.classList.toggle('sel', +r.dataset.seg === k));
+  rangeK = k - 1; xr = tr[k] || tr[0]; seek(xr[0]); drawAllCharts();
+}
+// 동작이 적으면 버튼, 랜덤 왕복 시험처럼 많으면 "전체" 버튼 + 아래 동작 목록
+(D.trials ? ['전체'] : ['전체', ...D.move_names]).forEach((name, k) => {
+  const b = document.createElement('button'); b.textContent = name; if (k === 0) b.classList.add('on');
+  b.onclick = () => selectRange(k);
+  ranges.appendChild(b);
+});
+if (D.trials) {
+  document.getElementById('trialsSec').hidden = false;
+  const execNames = D.plans.map(p => p.name);
+  const rows = D.trials.map(x => {
+    const seg = execNames.indexOf(x.key) + 1;          // 실행된 동작이면 1.., 아니면 0
+    const res = !x.plan_ok ? '계획 실패 (실행 안 함)' : !x.executed ? '실행 안 함' :
+      (x.r2_ok ? 'R2 성공' : 'R2 실패') + (x.wmx_min_box_mm === null || !x.obstacles.length ? '' : x.wmx_min_box_mm < 0 ? ' · 충돌' : ' · 충돌 없음');
+    const obs = x.obstacles.length ? x.obstacles.map(k => `<span style="color:#${(OBS_COLOR[k] ?? 0xd9534f).toString(16).padStart(6, '0')}">■</span> ${k}`).join(', ') : '없음';
+    return `<tr class="${seg ? 'run' : 'fail'}" data-seg="${seg}"><td>${x.k}</td><td>${x.dir}</td>
+      <td style="text-align:left">${obs}</td>
+      <td>${x.plan_ms.toFixed(0)}</td><td>${x.duration ? x.duration.toFixed(2) : '-'}</td><td>${res}</td></tr>`;
+  });
+  const tt = document.getElementById('tt');
+  tt.innerHTML = `<tr><th>#</th><th>방향</th><th style="text-align:left">장애물</th><th>계획 (ms)</th><th>동작 (s)</th><th>결과</th></tr>` + rows.join('');
+  tt.querySelectorAll('tr.run').forEach(r => r.onclick = () => selectRange(+r.dataset.seg));
+}
+function idxAt(t) { let lo = 0, hi = N - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (T[m] < t) lo = m + 1; else hi = m; } return lo; }
+function seek(t) { cur = Math.max(xr[0], Math.min(xr[1], t)); update(); }
+slider.oninput = () => seek(xr[0] + (xr[1] - xr[0]) * slider.value / 1000);
+document.getElementById('play').onclick = () => {
+  playing = !playing; document.getElementById('play').textContent = playing ? '❚❚ 멈춤' : '▶ 재생';
+  if (playing && cur >= xr[1] - 1e-6) cur = xr[0];
+  last = performance.now();
+};
+document.querySelectorAll('input[name=src]').forEach(r => r.onchange = update);
+['ghostPlan', 'showSph', 'showPath'].forEach(id => document.getElementById(id).onchange = update);
+
+const jt = document.getElementById('jt');
+function update() {
+  const i = idxAt(cur), q = src() === 'fb' ? D.fb[i] : D.cmd[i];
+  robot.setQ(q);
+  const pa = planAt(T[i]);
+  const pq = pa ? pa.q : lastPlanBefore(T[i]);
+  ghostPlan.visible = document.getElementById('ghostPlan').checked && !!pq; if (pq) ghostPlan.setQ(pq);
+  setObstacles(obsIndexAt(T[i]));
+  robot.showSpheres(document.getElementById('showSph').checked);
+  paths.forEach(p => p.visible = document.getElementById('showPath').checked);
+  slider.value = Math.round(1000 * (cur - xr[0]) / Math.max(1e-9, xr[1] - xr[0]));
+  const seg = D.segments.findIndex(([a, b]) => T[i] >= a && T[i] <= b);
+  document.getElementById('now').textContent = `${T[i].toFixed(3)} s`;
+  document.getElementById('nowInfo').textContent = seg >= 0 ? D.move_names[seg] + ' 실행 중' : '정지';
+  jt.innerHTML = `<tr><th>관절</th><th>실제 °</th><th>명령 °</th><th>계획 °</th><th>실제−명령 mrad</th></tr>` + D.joints.map((n, j) =>
+    `<tr><td><span style="color:${JC[j]}">■</span> ${n}</td><td>${deg(D.fb[i][j]).toFixed(2)}</td><td>${deg(D.cmd[i][j]).toFixed(2)}</td><td>${pq ? deg(pq[j]).toFixed(2) : '-'}</td><td>${fbMinusCmd[i][j].toFixed(3)}</td></tr>`).join('');
+  drawCursors();
+}
+function loop(now) {
+  if (playing) {
+    cur += (now - last) / 1000 * parseFloat(document.getElementById('speed').value);
+    if (cur >= xr[1]) { cur = xr[1]; playing = false; document.getElementById('play').textContent = '▶ 재생'; }
+    update();
+  }
+  last = now; controls.update(); renderer.render(scene, camera); requestAnimationFrame(loop);
+}
+
+// ---------- 그래프 ----------
+const charts = [];
+function makeChart(id, keyId, series, yfmt, refLines = [], points = []) {
+  const cv = document.getElementById(id), ctx = cv.getContext('2d'), off = document.createElement('canvas');
+  const ch = { cv, ctx, off, series, refLines, points, yfmt, pad: { l: 46, r: 8, t: 6, b: 18 } };
+  document.getElementById(keyId).innerHTML = series.filter(s => s.key).map(s => `<span><i style="background:${s.color}${s.dash ? ';opacity:.6' : ''}"></i>${s.key}</span>`).join('');
+  cv.addEventListener('click', e => { const r = cv.getBoundingClientRect(), x = (e.clientX - r.left - ch.pad.l) / (r.width - ch.pad.l - ch.pad.r); seek(xr[0] + x * (xr[1] - xr[0])); });
+  charts.push(ch); return ch;
+}
+function drawChart(ch) {
+  const dpr = window.devicePixelRatio || 1, w = ch.cv.clientWidth, h = ch.cv.clientHeight;
+  ch.off.width = ch.cv.width = w * dpr; ch.off.height = ch.cv.height = h * dpr;
+  const g = ch.off.getContext('2d'); g.scale(dpr, dpr);
+  const { l, r, t, b } = ch.pad, W = w - l - r, H = h - t - b;
+  const i0 = idxAt(xr[0]), i1 = idxAt(xr[1]);
+  let lo = Infinity, hi = -Infinity;
+  for (const s of ch.series) for (let i = i0; i <= i1; i++) { const v = s.y(i); if (v !== null && Number.isFinite(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v); } }
+  for (const v of ch.refLines.map(x => x.v)) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  for (const ps of ch.points) for (const [tt, v] of ps.pts) if (tt >= xr[0] && tt <= xr[1]) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  if (!Number.isFinite(lo)) { lo = -1; hi = 1; }
+  if (hi - lo < 1e-9) { hi += 1; lo -= 1; }
+  const m = (hi - lo) * 0.06; lo -= m; hi += m;
+  const X = tt => l + (tt - xr[0]) / (xr[1] - xr[0]) * W, Y = v => t + (hi - v) / (hi - lo) * H;
+  g.fillStyle = css('--chart-bg'); g.fillRect(0, 0, w, h);
+  g.strokeStyle = css('--grid'); g.fillStyle = css('--muted'); g.font = '10.5px system-ui'; g.lineWidth = 1;
+  for (let k = 0; k <= 4; k++) { const v = lo + (hi - lo) * k / 4, y = Y(v); g.beginPath(); g.moveTo(l, y); g.lineTo(l + W, y); g.stroke(); g.fillText(ch.yfmt(v), 2, y + 3); }
+  for (let k = 0; k <= 5; k++) { const tt = xr[0] + (xr[1] - xr[0]) * k / 5; g.fillText(tt.toFixed(2) + 's', X(tt) - 12, h - 4); }
+  for (const [a, bb] of D.segments) { g.fillStyle = 'rgba(47,111,222,0.06)'; g.fillRect(X(a), t, X(bb) - X(a), H); }
+  for (const rl of ch.refLines) { g.strokeStyle = rl.color; g.setLineDash([4, 3]); g.beginPath(); g.moveTo(l, Y(rl.v)); g.lineTo(l + W, Y(rl.v)); g.stroke(); g.setLineDash([]); }
+  const step = Math.max(1, Math.floor((i1 - i0) / (W * 2)));
+  for (const s of ch.series) {
+    g.strokeStyle = s.color; g.lineWidth = s.width || 1.4; g.setLineDash(s.dash ? [5, 3] : []); g.beginPath(); let pen = false;
+    for (let i = i0; i <= i1; i += step) { const v = s.y(i); if (v === null || !Number.isFinite(v)) { pen = false; continue; } const x = X(T[i]), y = Y(v); if (pen) g.lineTo(x, y); else { g.moveTo(x, y); pen = true; } }
+    g.stroke(); g.setLineDash([]);
+  }
+  for (const ps of ch.points) {
+    g.fillStyle = ps.color;
+    for (const [tt, v] of ps.pts) if (tt >= xr[0] && tt <= xr[1]) { g.beginPath(); g.arc(X(tt), Y(v), 2.6, 0, 2 * Math.PI); g.fill(); }
+  }
+  ch.X = X;
+}
+function drawCursors() {
+  for (const ch of charts) {
+    if (!ch.X) continue;
+    const dpr = window.devicePixelRatio || 1, c = ch.ctx;
+    c.setTransform(1, 0, 0, 1, 0, 0); c.drawImage(ch.off, 0, 0); c.scale(dpr, dpr);
+    const x = ch.X(cur); c.strokeStyle = css('--ink'); c.lineWidth = 1; c.beginPath(); c.moveTo(x, ch.pad.t); c.lineTo(x, ch.cv.clientHeight - ch.pad.b); c.stroke();
+  }
+}
+function drawAllCharts() { charts.forEach(drawChart); drawCursors(); }
+
+const posSeries = [];
+D.joints.forEach((n, j) => {
+  posSeries.push({ key: n, color: JC[j], y: i => deg(D.fb[i][j]) });
+  posSeries.push({ color: JC[j], dash: true, width: 1.1, y: i => { const p = planAt(T[i]); return p ? deg(p.q[j]) : null; } });
+});
+makeChart('c_pos', 'k_pos', posSeries, v => v.toFixed(0));
+makeChart('c_cp', 'k_cp', D.joints.map((n, j) => ({ key: n, color: JC[j], width: 0.8, y: i => cmdMinusPlan[i] ? cmdMinusPlan[i][j] : null })), v => v.toFixed(3), [],
+  D.joints.map((n, j) => ({ color: JC[j], pts: D.plans.flatMap(p => (p.knot_t || []).map((tt, k) => [tt, p.knot_err[k][j]])) })));
+makeChart('c_fc', 'k_fc', D.joints.map((n, j) => ({ key: n, color: JC[j], y: i => fbMinusCmd[i][j] })), v => v.toFixed(3));
+new ResizeObserver(drawAllCharts).observe(document.querySelector('.charts'));
+drawAllCharts();
+seek(0);
+requestAnimationFrame(loop);
+// 점검용: 브라우저 FK(URDF 사슬) 와 cuRobo FK(make_report.py 의 tcp_fb) 비교 — VIEWER.checkFK() → 최대 차이 (mm)
+window.VIEWER = {
+  checkFK() {
+    let worst = 0;
+    for (let i = 0; i < N; i += Math.max(1, Math.floor(N / 200))) {
+      ghostPlan.setQ(D.fb[i]); const p = ghostPlan.tool();
+      worst = Math.max(worst, p.distanceTo(new THREE.Vector3(...D.tcp_fb[i])) * 1000);
+    }
+    update(); return worst;
+  }
+};
+</script>
+</body>
+</html>

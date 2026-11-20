@@ -1,0 +1,10 @@
+__pycache__/
+.omc/
+backup_*/
+# Thor 에서 생기는 실행 자료 (보정 결과·저장 자세·엔코더) — 코드가 아님
+camera_pose.json
+poses.json
+last_encoders.json
+*.tmp
+# WMX 축 로그 빌드 결과 (wmx_r2.sh 가 wmx/wmx_axis_log.cpp 로 만듦)
+wmx/wmx_axis_log

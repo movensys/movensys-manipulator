@@ -1,0 +1,58 @@
+# [2026-10-27 사용자 "조그에서는 입력성형 빼고 무브잇만으로 조그하도록 하자. 목표 이동만 입력성형 적용"] GUI 조그용 MoveIt Servo (2.12.4) 설정.
+# 동료 movensys_manipulator_moveit_config/config/dobot_cr3a/servo.yaml 을 바탕으로, 바꾼 곳은 ★.
+# 기준 좌표·공구 끝은 이 버전에서 파라미터가 아니라 IK 사슬 (SRDF 팔 그룹) 의 시작·끝 = 받침 Link0 · gui_tip (cr3a_servo.launch.py).
+# 동료 파일의 planning_frame·ee_frame·robot_link_command_frame·num_outgoing_halt_msgs_to_publish 는 2.12.4 에 없는 이름이라 뺌.
+
+command_in_type: "speed_units"    # ★ 서버가 GUI 속도 그대로 보냄 (공구 끝 m/s · rad/s, 관절 rad/s). 동료 = unitless (−1~1 × scale)
+scale:
+  linear: 0.4                     # 공구 끝 속도 상한 [m/s] (speed_units 에서도 이 이상은 줄임)
+  rotational: 0.8                 # 회전 속도 상한 [rad/s]
+  joint: 0.5                      # (unitless 관절 명령에만)
+
+override_velocity_scaling_factor: 0.0
+
+publish_period: 0.025             # 40 Hz
+max_expected_latency: 0.1         # 명령 → 제어기 지연 예상 (Servo 가 이만큼 앞 시각까지 궤적을 냄, 기본값)
+command_out_type: trajectory_msgs/JointTrajectory
+publish_joint_positions: true
+# 위치만 (동료와 같음). 속도도 보내면 팔 제어기 (JTC, Jazzy) 가 "Velocity of last trajectory point … is not zero" 로 Servo 궤적
+#  (끝 속도 ≠ 0) 을 거절 → 받았다 말았다 하며 R2 MaxAccError → 비상정지 Final (2026-10-27 WMX 시뮬레이터 4 차). 위치만이면 25 ms 점마다
+#  속도가 꺾여 엔진 1 ms 가속이 조그 시작·멈춤 때 커짐 → 관절 가속 한계를 낮춤 (launch 파일 SERVO_ACC)
+publish_joint_velocities: false
+publish_joint_accelerations: false
+
+# 명령 끊김·멈춤 때 갑자기 서지 않게 (smoothHalt 도 이 필터로 줄임).
+# ★ 가속도 제한 (관절 가속 ≤ joint_limits.yaml 2.0 rad/s², 방향 그대로). 동료 = Butterworth — Servo 가 걸러진 위치를 다음 계산의 출발점으로
+#   쓰므로 (되먹임) 속도 명령이 2/(2+계수 1.5) = 0.571 배로 줄었음 (2026-10-27 WMX 시뮬레이터: 관절·공구 끝 모두 57~59 %).
+#   이 필터의 파라미터 update_period·planning_group_name 은 노드 최상위 (launch 파일이 넣음)
+use_smoothing: true
+smoothing_filter_plugin_name: "online_signal_smoothing::AccelerationLimitedPlugin"
+
+thread_priority: 40
+
+move_group_name: movensys_manipulator_arm
+
+# ★ move_group 없이 Servo 혼자 장면을 가짐 (동료 = move_group 이 주인, Servo 는 따라감)
+is_primary_planning_scene_monitor: true
+monitored_planning_scene_topic: "/monitored_planning_scene"
+
+# ★ 서버가 20 Hz 로 보냄 → 0.2 s (동료 0.1). 조그를 떼면 서버가 0 속도를 0.3 s 보낸 뒤 끊음
+incoming_command_timeout: 0.2
+
+# 특이점·관절 한계 (동료 값)
+lower_singularity_threshold: 17.0
+hard_stop_singularity_threshold: 30.0
+leaving_singularity_threshold_multiplier: 2.0
+joint_limit_margins: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
+
+cartesian_command_in_topic: ~/delta_twist_cmds
+joint_command_in_topic: ~/delta_joint_cmds
+joint_topic: /joint_states
+status_topic: ~/status
+command_out_topic: /movensys_manipulator_arm_controller/joint_trajectory   # R2 팔 제어기 (서버 목표 이동과 같은 곳 — 서버는 조그 동안 안 보냄)
+
+# 충돌 검사: MoveIt 장면 = 로봇 + 테이블 + Thor 상자 (동료 URDF). 카메라 지도는 모름
+check_collisions: true
+collision_check_rate: 10.0
+self_collision_proximity_threshold: 0.01
+scene_collision_proximity_threshold: 0.02

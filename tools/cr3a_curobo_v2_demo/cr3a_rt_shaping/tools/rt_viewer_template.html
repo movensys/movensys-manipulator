@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CR3A 실시간 회피 재생</title>
+<!-- [만듦 2026-10-13] rt_report.py 가 아래 DATA 를 채워 report.html 을 만든다. 3D 로봇은 WMX 엔진 축 로그(1 ms) 실제 위치.
+     [2026-10-14 사용자 요청] 거리 그래프·표, WMX 실제 − 명령, 단계별 가속 뺌. 카메라 지도 칸 (움직이는·정지 물체로 본 칸), 실제 상자 켜고 끄기,
+     관절 위치·속도·가속 (실선 = 보낸 명령, 점선 = WMX 명령), 명령 전달 그래프 (엔진 1 ms 가속, 전달 지연, 보낸 여유) 넣음 -->
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --ink: #1d2330; --muted: #5d6676; --line: #dfe3ea;
+  --accent: #2f6fde; --chart-bg: #ffffff; --grid: #eceff4;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12151b; --panel: #1b2029; --ink: #e8ebf1; --muted: #9aa3b2; --line: #2c3340;
+    --accent: #6a9bff; --chart-bg: #1b2029; --grid: #262c37;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12151b; --panel: #1b2029; --ink: #e8ebf1; --muted: #9aa3b2; --line: #2c3340;
+  --accent: #6a9bff; --chart-bg: #1b2029; --grid: #262c37;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif; }
+header { padding: 14px 18px 6px; }
+h1 { font-size: 18px; margin: 0 0 2px; }
+.sub { color: var(--muted); font-size: 12.5px; }
+ul.sub { margin: 4px 0 0; padding-left: 18px; }
+ul.sub li { margin: 1px 0; }
+ul.sub b, .note b { color: var(--ink); font-weight: 600; }
+.note ul { margin: 2px 0; padding-left: 16px; }
+.note li { margin: 0; }
+.note ul ul { margin: 0; padding-left: 14px; }
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 350px; gap: 10px; padding: 0 18px; }
+#view { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; min-height: 460px; overflow: hidden; }
+#view canvas { display: block; }
+#legend { position: absolute; left: 10px; top: 8px; right: 10px; font-size: 12px; color: var(--muted); background: color-mix(in srgb, var(--panel) 80%, transparent); padding: 4px 8px; border-radius: 6px; }
+#legend span { display: inline-block; margin-right: 10px; }
+#legend i, i.sw { display: inline-block; width: 12px; height: 10px; vertical-align: middle; margin-right: 4px; border-radius: 2px; }
+.side { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.side h3 { margin: 8px 0 4px; font-size: 13px; }
+.side .note { color: var(--muted); font-size: 11.5px; margin: 4px 0 2px; }
+.row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 3px 0; }
+button, select { font: inherit; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); cursor: pointer; }
+button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+input[type=range] { width: 100%; }
+label { cursor: pointer; user-select: none; }
+#now { font-variant-numeric: tabular-nums; }
+table.t { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+table.t th, table.t td { padding: 2px 4px; text-align: right; border-bottom: 1px solid var(--line); }
+table.t th:first-child, table.t td:first-child { text-align: left; }
+table.t th { color: var(--muted); font-weight: 600; }
+.legs { padding: 10px 18px 0; }
+.legs .box { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+.legs h3 { margin: 2px 0 6px; font-size: 13px; }
+#lt tr.run { cursor: pointer; }
+#lt tr.run:hover td { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+#lt tr.sel td { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.charts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 10px 18px 18px; }
+.charts h3.sec { grid-column: 1 / -1; margin: 10px 0 0; font-size: 13.5px; }
+.chart { background: var(--chart-bg); border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px 4px; }
+.chart.wide { grid-column: 1 / -1; }
+.chart h4 { margin: 2px 0 2px; font-size: 12.5px; }
+.chart .note { color: var(--muted); font-size: 11.5px; margin-bottom: 2px; }
+.chart canvas { width: 100%; height: 190px; display: block; cursor: crosshair; }
+.chart.wide canvas { height: 210px; }
+.keys { font-size: 11.5px; color: var(--muted); }
+.keys span { margin-right: 8px; white-space: nowrap; }
+.keys i { display: inline-block; width: 14px; height: 0; border-top: 2px solid; vertical-align: middle; margin-right: 3px; }
+#jsel button { padding: 2px 9px; }
+@media (max-width: 900px) {
+  .main { grid-template-columns: 1fr; }
+  .charts { grid-template-columns: 1fr; }
+  header, .main, .legs, .charts { padding-left: 16px; padding-right: 16px; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">CR3A 실시간 장애물 회피 — WMX 로그 재생</h1>
+  <ul class="sub" id="sub"></ul>
+</header>
+<section class="main">
+  <div id="view"><div id="legend"></div></div>
+  <div class="side">
+    <div class="row"><button id="play">▶ 재생</button>
+      <select id="speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select>
+      <span id="now"></span></div>
+    <input type="range" id="slider" min="0" max="1000" value="0">
+    <div class="row" id="ranges"></div>
+    <h3>3D 보기</h3>
+    <div class="row"><label><input type="checkbox" id="showBox" checked> 실제 상자 (시나리오 위치)</label></div>
+    <div class="row"><label><input type="checkbox" id="showDyn" checked> <i class="sw" style="background:#e0218a"></i>카메라 지도: 움직이는 물체로 본 칸</label></div>
+    <div class="row" id="rowStatic"><label><input type="checkbox" id="showStatic" checked> <i class="sw" style="background:#7d8796"></i>카메라 지도: 정지 물체로 본 칸</label></div>
+    <div class="row"><label><input type="checkbox" id="showMask"> <i class="sw" style="background:#ff9f1c;opacity:.5"></i>팔 지우기 영역 (카메라가 못 보는 곳)</label></div>
+    <div class="row"><label><input type="checkbox" id="showCmd"> <span id="cmdLabel">보낸 명령 자세 (초록)</span></label></div>
+    <div class="row"><label><input type="checkbox" id="showSph"> 충돌 구 (MPC 모델)</label></div>
+    <div class="row"><label><input type="checkbox" id="showCam" checked> 카메라</label></div>
+    <div class="note" id="voxNote"></div>
+    <div id="nowInfo" class="sub"></div>
+    <h3>관절 (°)</h3>
+    <table class="t" id="jt"></table>
+  </div>
+</section>
+<section class="legs"><div class="box"><h3>다리 (누르면 그 구간으로)</h3><table class="t" id="lt"></table></div></section>
+<section class="legs" id="ctSec"><div class="box"><h3>닿음 — 실제 형상 (Dobot 메시) 거리 &lt; 0 (누르면 0.6 s 앞부터 0.25× 로 재생)</h3><div class="note sub" id="ctNote"></div><table class="t" id="ct"></table></div></section>
+<section class="charts">
+  <div class="chart wide"><div class="row"><b style="font-size:12.5px">관절 고르기</b><span id="jsel"></span></div>
+    <div class="note"><ul>
+      <li><b>실선</b> = 보낸 명령: cuRobo MPC 목표를 명령 생성기가 속도·가속·저크 한계 안에서 만든 5 ms 궤적 (JTC 로 보낸 값)</li>
+      <li><b>점선</b> = WMX 엔진 명령</li>
+      <li>관절을 하나만 고르면 실선·점선을 비교하기 쉬움</li></ul></div></div>
+  <div class="chart wide"><h4>관절 위치 (°)</h4><div class="note"><ul><li>점선 = WMX 엔진 명령 위치 (CMDPOS)</li><li class="lagn"></li></ul></div><canvas id="c_jp"></canvas></div>
+  <div class="chart wide"><h4>관절 속도 (°/s)</h4><div class="note"><ul><li>점선 = WMX 엔진 명령 속도 (CMDVEL)</li><li class="lagn"></li></ul></div><canvas id="c_jv"></canvas></div>
+  <div class="chart wide"><h4>관절 가속 (°/s²)</h4><div class="note"><ul><li>점선 = WMX 명령 속도의 10 ms 변화 ÷ 10 ms</li>
+    <li>가속이 한계 (관절 1·2 ±360, 3~6 ±446 °/s²) 사이를 오가는 이유: 명령 생성기가 목표점을 가장 빨리 쫓는 방식</li><li class="lagn"></li></ul></div><canvas id="c_ja"></canvas></div>
+  <h3 class="sec" id="s_shp">입력성형 확인</h3>
+  <div class="chart wide" id="w_shp"><h4 id="h_shp">WMX 명령 − 전체 컨볼루션 (mrad, 관절 각변위)</h4><div class="note" id="n_shp"></div><canvas id="c_shp"></canvas></div>
+  <h3 class="sec">명령 전달: 보낸 명령 → JTC (10 ms) → R2 (1 ms 점으로 쪼갬) → CyclicBuffer → WMX 엔진</h3>
+  <div class="chart"><h4>엔진이 본 1 ms 가속 (rad/s², 관절별)</h4><div class="note" id="n_a"></div><canvas id="c_a"></canvas><div class="keys" id="k_a"></div></div>
+  <div class="chart"><h4 id="h_lag">WMX 명령 − 보낸 명령 (mrad, 전달 지연을 맞춘 뒤)</h4><div class="note" id="n_lag"></div><canvas id="c_lag"></canvas></div>
+  <div class="chart wide"><h4>명령을 보낸 여유 (ms)</h4><div class="note" id="n_lead"></div><canvas id="c_lead"></canvas><div class="keys" id="k_lead"></div></div>
+</section>
+<script>/*__DATA__*/</script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+
+const D = window.DATA;
+if (!D) {
+  document.body.innerHTML = `<div style="padding:40px;font:15px/1.6 system-ui,'Malgun Gothic',sans-serif">
+    <h2>이 파일은 보고서 <b>틀</b>입니다 (데이터 없음)</h2>
+    <p>보고서는 <code>rt_report.py</code> 가 이 틀에 WMX 로그를 채워 만듭니다 (<code>~/workspaces/wmx_r2_logs/rt_…/report.html</code>).</p></div>`;
+  throw new Error('보고서 틀 — DATA 없음');
+}
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const JC = ['#4e79a7', '#f28e2b', '#59a14f', '#e15759', '#b07aa1', '#76b7b2'];
+const OC = ['#d9534f', '#e08a2e', '#8e6bd6', '#2f9fb3', '#6b8e23'];
+const DYN_C = 0xe0218a, STA_C = 0x7d8796, MASK_C = 0xff9f1c;
+const deg = r => r * 180 / Math.PI;
+document.getElementById('title').textContent = D.title;
+const li = items => items.map(s => `<li>${s}</li>`).join('');
+{
+  const I = D.info, sub = document.getElementById('sub');
+  if (I) sub.innerHTML = li([
+    ...(I.model === 'tool' ? [`<b>로봇 형상</b>: Dobot CR3A + 끝단 공구 — <b style="color:#d08c2c">브래킷</b> · <b style="color:#3a6fc4">RealSense D455</b> · <b>AG-160-95 그리퍼</b> (사용자 CAD 0_IIFES Demo.SLDASM, 그리퍼 완전히 벌림, 손끝 = 플랜지 + ${I.tip_mm} mm)<ul>${li([
+      `충돌 구 = 팔 ${I.n_sph_arm}개 (예전 그대로) + 공구 전체를 빈틈없이 덮는 큰 구 ${I.n_sph_tool}개${I.thick_med_mm != null ? ` (실제 공구보다 평균 ${I.thick_med_mm} mm, 최대 ${I.thick_max_mm} mm 두꺼움)` : ''} — 오른쪽 '충돌 구' 로 보기`,
+      'D455 는 형상으로만 넣음 (장애물 감지는 아래 고정 카메라) · A·B = 그리퍼 끝 자리 · 닿음 판정 = 실제 공구 메시'])}</ul>`] : []),
+    I.camera === 'real'
+      ? `<b>장애물 감지</b>: <b>실제 고정 카메라</b> (D455) → cuRoboV2 Mapper 지도<ul>${li([
+          'MPC·전역 계획·안전 검사는 이 지도만 봄 (바닥만 상자로 줌)',
+          '<b>실제 카메라 기록이라 물체 참값이 없음</b> — 기록의 기둥·시나리오 물체는 가상이라 물체 거리·닿음은 안 셈 (3D 에도 안 그림). 참값은 바닥 (테이블 윗면) 뿐'])}</ul>`
+      : `<b>장애물 감지</b>: 합성 깊이 카메라 1대 (${I.cam_fps} fps) → cuRoboV2 Mapper 지도<ul>${li([
+          'MPC·전역 계획·안전 검사는 이 지도만 봄 — 상자 위치는 모름 (바닥만 상자로 줌)'])}</ul>`,
+    ...(I.floor_z_mm ? [`<b>바닥</b> (충돌 바닥 = 계획기·MPC·안전 검사·닿음 판정): 테이블 윗면 z ${I.floor_z_mm} mm (카메라 보정)`] : []),
+    I.style === 'cmpc'
+      ? `<b>명령 경로</b>: 성형 MPC (cuRobo 가 성형된 경로를 최적화: 충돌 = 성형 뒤, 한계·매끄러움 = 성형 전) ${I.mpc_rate_hz} Hz 로 다시 계획 → ${I.rate_hz} Hz 메시지 → JTC → R2 CyclicBuffer (1 ms 점) → WMX 시뮬레이터`
+      : `<b>명령 경로</b>: MPC ${I.rate_hz} Hz → 명령 궤적 (URDF 속도·가속 + 저크 ${I.jerk} rad/s³ 안) → JTC → R2 CyclicBuffer (1 ms 점) → WMX 시뮬레이터`,
+    `<b>입력성형</b>: ${I.shaping === 'none' || !I.shaping ? '없음' : `${I.shaping} (1 ms 칸, 길이 ${I.shaping_len_ms} ms, 평균 지연 ${I.shaping_delay_ms} ms) — 실제로 실행된 명령을 기억해 이어 붙인 경로 전체를 컨볼루션`}` +
+      (I.kernels && I.kernels.length > 1 ? `<ul>${li([`<b>성형기를 바꿈</b>: ${I.kernels.map(k => k.label + (k.until != null ? ` (~${(k.until - D.t[0]).toFixed(1)} s)` : '')).join(' → ')} — 성형 확인·3D 의 u·닿음은 성형기마다 그 성형기로`])}</ul>` : '') +
+      (I.estop_n ? `<ul>${li([`<b>비상정지 ${I.estop_n}번</b>: 그 감속 구간은 성형을 건너뛴 명령 → 성형 확인에서 빼고, 3D 의 u·닿음은 보낸 감속 점으로`])}</ul>` : ''),
+    I.uniform
+      ? `<b>설정</b>: 물체 ${I.scenario} · <b>정지·움직이는 물체 구분 없음</b> (보이는 겉면만, 뒷면 채우기 없음) · 반응 거리 ${I.act_new_cm} cm (기둥·움직이는 물체 모두) · 바닥 ${I.act_floor_cm} cm (로봇이 서 있는 평면, 받침 충돌 구 때문에 3.5 cm 넘게 못 함) · 팔 지우기 ${I.mask_cm} cm`
+      : `<b>설정</b>: 물체 ${I.scenario} · 반응 거리 새 물체 ${I.act_new_cm} cm / 정지 ${I.act_static_cm} cm · 팔 지우기 ${I.mask_cm} cm`,
+    ...(I.ahead_check || I.live_replan ? [`<b>막힘 처리</b>: ${I.ahead_check ? `경로 앞 ${I.ahead_from_s}~${I.ahead_to_s} s 가 지도와 닿으면 바로 다시 계획` : '경로를 3 s 못 따라가면 다시 계획'}${I.live_replan ? ' · <b>멈추지 않고</b> (로봇은 지금 경로로 계속, 계획이 끝나면 새 경로로)' : ''}${I.live ? ` — 요청 ${I.live.req}번: 새 경로 ${I.live.ok} · 실패 ${I.live.fail} · 다리 끝나 버림 ${I.live.drop}` : ''}${I.live_late && I.live_late.late ? `<ul>${li([`늦어서 안 보낸 메시지 ${I.live_late.late}개 중 <b>${I.live_late.late_during_plan}개가 다시 계획이 도는 동안</b> (계획 시간 합 ${I.live_late.plan_time_s} s) — 계획 스레드가 GPU·파이썬 실행권을 같이 써서 한 주기 계산 중앙 ${I.live_late.cyc_ms_median_else} → ${I.live_late.cyc_ms_median_plan} ms`])}</ul>` : ''}`] : []),
+    ...(I.back_off || I.fill_grad || I.cp_dyn_approach ? [`<b>서 있을 때 다가오는 물체</b> (10-16 보강): ${!I.back_off ? '물러나기 없음' : I.back_style === 'yield' ? `막혀 서 있는데 물체가 다가오면 <b>그 자리에서 비킴</b> (경로 목표를 잠시 내려놓아 MPC 가 물체 반대쪽으로 밀려남) — 안 다가오고 길이 열리면 경로 계속, 막혀 있으면 그 자리에서 다시 계획 (한 번 최대 ${I.back_max_s} s)` : '막혀 서 있는데 물체가 다가오면 <b>지나온 경로로 물러나며</b> 다시 계획 (새 길이 나오면 그 길로, 물체가 더 안 다가오면 다시 목표 쪽으로)'} · 팔 지우기 경계 채우기 ${I.fill_grad ? '<b>방향 있음</b> (보이던 경계에서 멀어질수록 거리가 늘어 MPC 가 빠질 쪽을 앎)' : '납작함 (10-13 방식)'} · 성형 규칙 (2)(3) ${I.cp_dyn_approach ? '물체에 다가가는 점에서만 (물러나는 움직임은 안 막음)' : '모든 점'}${I.back ? ` — ${I.back_style === 'yield' ? '비키기' : '물러나기'} ${I.back.start}번 (새 경로로 끝 ${I.back.new_path} · 다시 목표 쪽으로 ${I.back.resume})` : ''}`] : []),
+    I.guard_kind
+      ? `<b>결과</b>: 다리 ${I.legs_ok} 도착 (${I.leg_sum_n ?? 16} 다리 합 ${I.leg_sum_s} s) · 안전 검사 개입 ${I.guards}회 (멈춤 ${I.guard_kind.brake}, 앞 메시지 계속 ${I.guard_kind.keep}) · 늦어서 안 보낸 메시지 ${I.late_sends}개` +
+        (I.contacts ? `<ul>${li([`<b>닿음 ${I.contacts.counted ?? (I.contacts.robot + I.contacts.object_came)}건</b> = 로봇이 움직여 닿음 <b>${I.contacts.robot}건</b> (그중 <b>성형 탓 ${I.contacts.shaping}건</b>) + <b>멈춘 로봇에 물체가 와서 닿음 ${I.contacts.object_came}건</b> (10-16 사용자 기준부터 셈) · 카메라가 못 본 물체 ${I.contacts.camera_blind ?? 0}건 (셈 안 함) — 아래 '닿음' 표`])}</ul>` : '')
+      : `<b>결과</b>: 다리 ${I.legs_ok} 도착 · 안전 검사 개입 ${I.guards}회 · 안 보낸 메시지 ${I.skipped}개`,
+    `<b>3D 로봇</b> = WMX 실제 위치${D.u ? ' · <b style="color:#19a974">초록 반투명</b> = 같은 시각의 성형 전 명령 u (켜고 끄기: 오른쪽)' : ''}`]);
+  else sub.outerHTML = `<div class="sub">${D.sub || ''}</div>`;      // 2026-10-14 오후 전 보고서 (줄글)
+}
+const T = D.t, N = T.length, S = D.sent;
+function bisect(arr, t) { let lo = 0, hi = arr.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m] < t) lo = m + 1; else hi = m; } return lo; }
+function lastLE(arr, t) { let lo = 0, hi = arr.length - 1; if (!arr.length || arr[0] > t) return -1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (arr[m] <= t) lo = m; else hi = m - 1; } return lo; }
+
+// ---------- 장애물 (경유점 → 시각별 위치) ----------
+function obsPos(o, t) {
+  if (o.static) return o.center;
+  if (D.t_go === null || t < D.t_go || (D.t_go_end != null && t >= D.t_go_end)) return null;   // 움직이는 물체는 GO 뒤 ~ 치우기 전에만 장면에 있음
+  const w = o.wps, tg = t - D.t_go;
+  if (tg <= w[0][0]) return w[0].slice(1);
+  for (let k = 1; k < w.length; k++) if (tg <= w[k][0]) {
+    const a = w[k][0] <= w[k - 1][0] ? 0 : (tg - w[k - 1][0]) / (w[k][0] - w[k - 1][0]);
+    return [1, 2, 3].map(j => w[k - 1][j] + a * (w[k][j] - w[k - 1][j]));
+  }
+  return w[w.length - 1].slice(1);
+}
+
+// ---------- 3D ----------
+const view = document.getElementById('view');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+view.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(40, 1, 0.01, 20);
+camera.up.set(0, 0, 1);
+camera.position.set(1.35, -0.95, 1.0);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0.25, 0, 0.25);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x666677, 1.6));
+const dl = new THREE.DirectionalLight(0xffffff, 1.6); dl.position.set(1, -1, 2); scene.add(dl);
+function setBg() { scene.background = new THREE.Color(css('--panel')); }
+setBg();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { setBg(); drawAllCharts(); });
+const grid = new THREE.GridHelper(1.6, 16, 0x8892a0, 0x8892a0); grid.rotation.x = Math.PI / 2; grid.material.opacity = 0.35; grid.material.transparent = true; scene.add(grid);
+grid.position.z = D.floor_z || 0;     // 바닥 = 기록의 충돌 바닥 (실제 카메라: 테이블 윗면)
+
+// 실제 상자 (시나리오 위치): 반투명 + 모서리 — 안쪽의 지도 칸이 보이게
+const obsMeshes = D.obstacles.map((o, k) => {
+  const geo = new THREE.BoxGeometry(...o.dims), g = new THREE.Group();
+  g.add(new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: OC[k % OC.length], transparent: true, opacity: 0.25, depthWrite: false })));
+  g.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: OC[k % OC.length] })));
+  scene.add(g); return g;
+});
+document.getElementById('legend').innerHTML = D.obstacles.map((o, k) =>
+  `<span><i style="background:${OC[k % OC.length]};opacity:.6"></i>${o.name}${o.static ? ' (정지)' : ''}</span>`).join('') +
+  `<span><i style="background:#e0218a"></i>지도: 움직이는 물체로 본 칸</span><span><i style="background:#7d8796"></i>지도: 정지 물체로 본 칸</span>`;
+
+// 카메라 (작은 사각뿔)
+const camG = new THREE.Group();
+{
+  const c = D.cam.pose, K = D.cam.K, z = 0.12, w = 320 / K[0][0] * z, h = 240 / K[1][1] * z;
+  const pts = [[0, 0, 0], [-w, -h, z], [0, 0, 0], [w, -h, z], [0, 0, 0], [w, h, z], [0, 0, 0], [-w, h, z],
+               [-w, -h, z], [w, -h, z], [w, -h, z], [w, h, z], [w, h, z], [-w, h, z], [-w, h, z], [-w, -h, z]];
+  const geo = new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(...p)));
+  camG.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x2f6fde })));
+  camG.position.set(c[0], c[1], c[2]); camG.quaternion.set(c[4], c[5], c[6], c[3]);
+  scene.add(camG);
+}
+
+// 카메라 지도 칸: 기록은 칸 번호를 묶은 글자 (rt_world.pack_voxels: 정렬한 번호의 차이를 varint → base64). 옛 기록은 칸 중심 mm ('p')
+const VG = D.vox.grid;
+function unpackVox(b64) {
+  const bin = atob(b64), out = []; let cur = -1, val = 0, sh = 0;
+  for (let i = 0; i < bin.length; i++) {
+    const b = bin.charCodeAt(i); val += (b & 127) * Math.pow(2, sh);
+    if (b & 128) sh += 7; else { cur += val; out.push(cur); val = 0; sh = 0; }
+  }
+  return out;
+}
+function voxPositions(snap) {
+  if (!snap) return new Float32Array(0);
+  if (snap.p) return Float32Array.from(snap.p.flat(), v => v / 1000);
+  const code = typeof snap === 'string' ? snap : snap.v;
+  if (!code || !VG) return new Float32Array(0);
+  const idx = unpackVox(code), [, ny, nz] = VG.shape, vs = VG.voxel, o = VG.origin, out = new Float32Array(idx.length * 3);
+  idx.forEach((f, k) => {
+    const iz = f % nz, r = (f - iz) / nz, iy = r % ny, ix = (r - iy) / ny;
+    out[3 * k] = o[0] + (ix + 0.5) * vs; out[3 * k + 1] = o[1] + (iy + 0.5) * vs; out[3 * k + 2] = o[2] + (iz + 0.5) * vs;
+  });
+  return out;
+}
+const CUBE = new THREE.BoxGeometry(0.0085, 0.0085, 0.0085);
+function voxMesh(color, cap, opacity) {
+  const m = new THREE.InstancedMesh(CUBE, new THREE.MeshStandardMaterial({ color, roughness: 0.7, transparent: opacity < 1, opacity, depthWrite: opacity >= 1 }), Math.max(1, cap));
+  m.count = 0; m.frustumCulled = false; scene.add(m); return m;
+}
+function fillVox(mesh, pos) {
+  const M = new THREE.Matrix4(), n = Math.min(pos.length / 3, mesh.instanceMatrix.count);
+  for (let k = 0; k < n; k++) { M.makeTranslation(pos[3 * k], pos[3 * k + 1], pos[3 * k + 2]); mesh.setMatrixAt(k, M); }
+  mesh.count = n; mesh.instanceMatrix.needsUpdate = true;
+}
+const snaps = D.vox.snaps || [], snapT = snaps.map(s => s.t);
+const dynMesh = voxMesh(DYN_C, 30000, 1.0);
+let dynShown = -2, dynCount = 0;
+function setDyn(t) {
+  const k = lastLE(snapT, t);
+  if (k === dynShown) return;
+  dynShown = k;
+  const pos = k >= 0 ? voxPositions(snaps[k]) : new Float32Array(0);
+  fillVox(dynMesh, pos); dynCount = pos.length / 3;
+}
+const staPos = voxPositions(D.vox.static), staMesh = voxMesh(STA_C, staPos.length / 3, 0.45);
+fillVox(staMesh, staPos);
+if (!staPos.length) document.getElementById('rowStatic').style.display = 'none';
+document.getElementById('voxNote').innerHTML = `<ul>${li([
+  `<b style="color:#e0218a">분홍</b> = 지도가 '새 물체' 로 본 1 cm 칸 (카메라 영상 3 장마다)<ul>${li([
+    '카메라 한 대라 카메라 쪽 면만 생김',
+    `로봇 표면 ${Math.round(D.vox.mask * 100)} cm 안은 팔로 보고 지워서 빠짐 (주황 = 팔 지우기 영역)`])}</ul>`,
+  staPos.length ? `<b style="color:#7d8796">회색</b> = 켤 때 정지 물체로 본 칸 (${staPos.length / 3} 칸)<ul>${li([
+    '기둥의 보이는 면 + 카메라에서 그 뒤로 가려진 곳까지 막힌 것으로 봄', '바닥 아래는 뺌'])}</ul>`
+    : '회색 (정지 물체로 본 칸): 이 기록에는 없음'])}</ul>`;
+
+// A, B 손끝
+for (const p of D.ab_tool) { const s = new THREE.Mesh(new THREE.SphereGeometry(0.012), new THREE.MeshBasicMaterial({ color: 0x2f6fde })); s.position.set(...p); scene.add(s); }
+
+// 로봇 (URDF 관절 사슬 + STL)
+const loader = new STLLoader(), geoms = {};
+for (const [ln, b64] of Object.entries(D.urdf.meshes)) {
+  const bin = atob(b64), buf = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+  geoms[ln] = loader.parse(buf.buffer); geoms[ln].computeVertexNormals();
+}
+function makeRobot(mat, withSpheres) {
+  const groups = {}, joints = {};
+  const root = new THREE.Group(); groups[D.urdf.root] = root;
+  for (const j of D.urdf.joints) {
+    const o = new THREE.Group();
+    o.position.set(...j.xyz); o.quaternion.setFromEuler(new THREE.Euler(j.rpy[0], j.rpy[1], j.rpy[2], 'ZYX'));
+    (groups[j.parent] || root).add(o);
+    const mv = new THREE.Group(); o.add(mv); groups[j.child] = mv;
+    joints[j.name] = { node: mv, axis: new THREE.Vector3(...j.axis).normalize() };
+  }
+  const cols = (D.urdf.colors || {});
+  for (const [ln, g] of Object.entries(geoms)) {
+    const m = (withSpheres && cols[ln]) ? new THREE.MeshStandardMaterial({ color: new THREE.Color(...cols[ln]), metalness: 0.2, roughness: 0.55 }) : mat;
+    groups[ln] && groups[ln].add(new THREE.Mesh(g, m));      // 끝단 공구 부품은 제 색 (성형 전 u 초록 반투명은 한 색)
+  }
+  if (withSpheres) {
+    const sm = new THREE.MeshStandardMaterial({ color: 0xf2b134, transparent: true, opacity: 0.35, depthWrite: false });
+    const mm = new THREE.MeshStandardMaterial({ color: MASK_C, transparent: true, opacity: 0.08, depthWrite: false });
+    for (const [ln, list] of Object.entries(D.spheres)) for (const s of list) {
+      const m = new THREE.Mesh(new THREE.SphereGeometry(s[3], 16, 12), sm); m.position.set(s[0], s[1], s[2]);
+      m.userData.sph = true; groups[ln] && groups[ln].add(m);
+      const k = new THREE.Mesh(new THREE.SphereGeometry(s[3] + D.vox.mask, 16, 12), mm); k.position.set(s[0], s[1], s[2]);
+      k.userData.mask = true; groups[ln] && groups[ln].add(k);
+    }
+  }
+  scene.add(root);
+  return {
+    root,
+    setQ(q) { D.joints.forEach((n, i) => joints[n] && joints[n].node.quaternion.setFromAxisAngle(joints[n].axis, q[i])); },
+    show(flag, on) { root.traverse(o => { if (o.userData[flag]) o.visible = on; }); },
+    set visible(v) { root.visible = v; }
+  };
+}
+const robot = makeRobot(new THREE.MeshStandardMaterial({ color: 0xc9cfdb, metalness: 0.2, roughness: 0.55 }), true);
+const ghost = makeRobot(new THREE.MeshStandardMaterial({ color: 0x19a974, transparent: true, opacity: 0.28, depthWrite: false }), false);
+robot.show('sph', false); robot.show('mask', false);
+
+function resize() {
+  const w = view.clientWidth, h = Math.max(460, Math.min(640, w * 0.62));
+  renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(view); resize();
+
+// ---------- 재생 ----------
+let cur = T[0], playing = false, last = 0;
+const slider = document.getElementById('slider');
+const ranges = [[T[0], T[N - 1]], ...D.legs.map(L => [Math.max(T[0], L.t0 - 0.3), Math.min(T[N - 1], (L.t1 ?? L.t0 + 5) + 0.5)])];
+let xr = ranges[0];
+function selectRange(k) {
+  document.querySelectorAll('#ranges button').forEach((x, j) => x.classList.toggle('on', j === k));
+  document.querySelectorAll('#lt tr.run').forEach(r => r.classList.toggle('sel', +r.dataset.k === k));
+  xr = ranges[k] || ranges[0]; seek(xr[0]); drawAllCharts();
+}
+{
+  const b = document.createElement('button'); b.textContent = '전체'; b.classList.add('on'); b.onclick = () => selectRange(0);
+  document.getElementById('ranges').appendChild(b);
+  const lt = document.getElementById('lt');
+  lt.innerHTML = `<tr><th>다리</th><th>결과</th><th>걸린 시간 (s)</th><th>계획 (회)</th><th>안전 검사 개입 (회)</th></tr>` +
+    D.legs.map((L, k) => `<tr class="run" data-k="${k + 1}"><td>${L.label}</td><td>${L.ok ? '도착' : (L.why || '실패')}</td>
+      <td>${L.duration != null ? L.duration.toFixed(2) : '-'}</td><td>${L.plans}</td><td>${L.guards ?? '-'}</td></tr>`).join('');
+  lt.querySelectorAll('tr.run').forEach(r => r.onclick = () => selectRange(+r.dataset.k));
+}
+// 닿음 표 [2026-10-16]: rt_tools contacts 판정 (실제 형상, 성형된 명령 y 와 성형 전 u). 로봇 탓 = 로봇이 움직여 닿음 (사용자 기준)
+const CT = D.contacts || [];
+const CT_C = { '성형 탓': '#8e44ad', '로봇 탓': '#d9534f', '물체가 와서': '#8892a0', '이어짐': '#b0b7c3', '카메라 못 봄': '#c99a2e' };
+if (D.u) document.getElementById('cmdLabel').innerHTML = '<i class="sw" style="background:#19a974;opacity:.6"></i>성형 전 명령 u (같은 시각)';
+if (CT.length) {
+  const ct = document.getElementById('ct');
+  ct.innerHTML = `<tr><th>시각 (s)</th><th>물체</th><th>판정</th><th>최저 거리 y / u (mm)</th><th>닿은 시간 (s)</th><th>그때 관절 속도 (rad/s)</th></tr>` +
+    CT.map((e, k) => `<tr class="run" data-k="${k}"><td>${(e.t - T[0]).toFixed(2)}</td><td>${e.obj}</td>
+      <td><b style="color:${CT_C[e.kind]}">${e.kind}</b>${e.cause && e.kind !== '물체가 와서' && e.kind !== '이어짐' && e.cause !== '성형 없음' ? ` <span class="sub">(${e.cause})</span>` : ''}</td>
+      <td>${e.y_mm} / ${e.u_mm ?? '-'}</td><td>${e.dur.toFixed(2)}</td><td>${e.v ?? '-'}</td></tr>`).join('');
+  ct.querySelectorAll('tr.run').forEach(r => r.onclick = () => {
+    const e = CT[+r.dataset.k]; selectRange(0); seek(e.t - 0.6);
+    document.getElementById('speed').value = '0.25'; playing = true; document.getElementById('play').textContent = '❚❚ 멈춤'; last = performance.now();
+  });
+  document.getElementById('ctNote').innerHTML = `<ul>${li([
+    '<b style="color:#d9534f">로봇 탓</b> = 닿기 직전 50 ms 동안 거리를 줄인 것이 로봇 움직임 (정지 물체는 로봇이 조금이라도 다가가면) — 문제가 되는 닿음',
+    '<b style="color:#8e44ad">성형 탓</b> = 로봇 탓 중 성형 전 명령 u 는 그 무렵 (성형기 길이 안) 안 닿은 것',
+    '<b style="color:#8892a0">물체가 와서</b> = 멈춘 로봇에 물체가 다가와 닿음 (10-16 사용자 기준부터 셈) · <b style="color:#b0b7c3">이어짐</b> = 다시 계획한 뒤에도 이어진 닿음',
+    '<b style="color:#c99a2e">카메라 못 봄</b> = 닿은 자리의 물체를 카메라 지도가 못 봄 (못 보는 면·팔 지우기, 닿기 1 s 전부터 지도에 그 물체 칸이 로봇 2 cm 안에 없음) — 셈 안 함 (사용자 기준: 카메라가 감지한 물체만)',
+    'y = 성형된 명령 (WMX 로 간 명령), u = 성형 전 명령 · 그래프에 같은 색 세로선'])}</ul>`;
+} else document.getElementById('ctSec').style.display = 'none';
+function idxAt(t) { return bisect(T, t); }
+function rcIdx(t) { return bisect(D.rc.t, t); }
+function seek(t) { cur = Math.max(xr[0], Math.min(xr[1], t)); update(); }
+slider.oninput = () => seek(xr[0] + (xr[1] - xr[0]) * slider.value / 1000);
+document.getElementById('play').onclick = () => {
+  playing = !playing; document.getElementById('play').textContent = playing ? '❚❚ 멈춤' : '▶ 재생';
+  if (playing && cur >= xr[1] - 1e-6) cur = xr[0];
+  last = performance.now();
+};
+['showBox', 'showDyn', 'showStatic', 'showMask', 'showCmd', 'showSph', 'showCam'].forEach(id => document.getElementById(id).onchange = update);
+const on = id => document.getElementById(id).checked;
+function legAt(t) { for (const L of D.legs) if (t >= L.t0 && t <= (L.t1 ?? Infinity)) return L.label; return '지키기'; }
+function update() {
+  const i = idxAt(cur);
+  robot.setQ(D.fb[i]);
+  D.obstacles.forEach((o, k) => { const p = obsPos(o, T[i]); obsMeshes[k].visible = !!p && on('showBox'); if (p) obsMeshes[k].position.set(...p); });
+  setDyn(T[i]); dynMesh.visible = on('showDyn'); staMesh.visible = on('showStatic');
+  ghost.visible = on('showCmd'); ghost.setQ(D.u ? D.u[i] : D.rc.cmd[rcIdx(T[i])]);
+  robot.show('sph', on('showSph')); robot.show('mask', on('showMask'));
+  camG.visible = on('showCam');
+  slider.value = Math.round(1000 * (cur - xr[0]) / Math.max(1e-9, xr[1] - xr[0]));
+  document.getElementById('now').textContent = `${(T[i] - T[0]).toFixed(2)} s`;
+  const cNow = CT.filter(e => T[i] >= e.t - 0.005 && T[i] <= e.t + e.dur + 0.005);
+  document.getElementById('nowInfo').innerHTML = `${legAt(T[i])} · 지도가 움직이는 물체로 본 칸 ${dynCount} 개` +
+    cNow.map(e => `<br><b style="color:${CT_C[e.kind]}">● 닿음: ${e.obj} ${e.kind}</b> (최저 ${e.y_mm} mm)`).join('');
+  const s = Math.max(0, lastLE(S.t, T[i]));
+  document.getElementById('jt').innerHTML = `<tr><th>관절</th><th>보낸 명령</th><th>WMX 명령</th></tr>` + D.joints.map((n, j) =>
+    `<tr><td><span style="color:${JC[j]}">■</span> ${n}</td><td>${S.q.length ? deg(S.q[s][j]).toFixed(2) : '-'}</td><td>${deg(D.cmd[i][j]).toFixed(2)}</td></tr>`).join('');
+  drawCursors();
+}
+function loop(now) {
+  if (playing) {
+    cur += (now - last) / 1000 * parseFloat(document.getElementById('speed').value);
+    if (cur >= xr[1]) { cur = xr[1]; playing = false; document.getElementById('play').textContent = '▶ 재생'; }
+    update();
+  }
+  last = now; controls.update(); renderer.render(scene, camera); requestAnimationFrame(loop);
+}
+
+// ---------- 그래프 ----------
+// 계열마다 시각 축 (tt) 이 따로 있음. joint 가 있는 계열은 '관절 고르기' 에서 고른 관절만 그림. dots = 점으로
+const charts = [], selJ = new Set([0, 1, 2, 3, 4, 5]);
+function makeChart(id, series, yfmt, refLines = []) {
+  const cv = document.getElementById(id), ctx = cv.getContext('2d'), off = document.createElement('canvas');
+  refLines = refLines.filter(rl => rl.v != null);       // 기록에 없는 기준선 (예: 모델 설정을 못 읽은 가속 한계) 은 안 그림
+  const ch = { cv, ctx, off, series, refLines, yfmt, pad: { l: 50, r: 8, t: 6, b: 18 } };
+  cv.addEventListener('click', e => { const r = cv.getBoundingClientRect(), x = (e.clientX - r.left - ch.pad.l) / (r.width - ch.pad.l - ch.pad.r); seek(xr[0] + x * (xr[1] - xr[0])); });
+  charts.push(ch); return ch;
+}
+function drawChart(ch) {
+  const dpr = window.devicePixelRatio || 1, w = ch.cv.clientWidth, h = ch.cv.clientHeight;
+  ch.off.width = ch.cv.width = w * dpr; ch.off.height = ch.cv.height = h * dpr;
+  const g = ch.off.getContext('2d'); g.scale(dpr, dpr);
+  const { l, r, t, b } = ch.pad, W = w - l - r, H = h - t - b;
+  const vis = ch.series.filter(s => s.tt && s.tt.length && (s.joint === undefined || selJ.has(s.joint)));
+  const span = s => [bisect(s.tt, xr[0]), Math.min(s.tt.length - 1, bisect(s.tt, xr[1]))];
+  let lo = Infinity, hi = -Infinity;
+  for (const s of vis) { const [i0, i1] = span(s); for (let i = i0; i <= i1; i++) { const v = s.y(i); if (v !== null && Number.isFinite(v)) { if (v < lo) lo = v; if (v > hi) hi = v; } } }
+  for (const rl of ch.refLines) if (!rl.soft) { lo = Math.min(lo, rl.v); hi = Math.max(hi, rl.v); }
+  if (!Number.isFinite(lo)) { lo = -1; hi = 1; }
+  if (hi - lo < 1e-9) { hi += 1; lo -= 1; }
+  const m = (hi - lo) * 0.06; lo -= m; hi += m;
+  const X = x => l + (x - xr[0]) / (xr[1] - xr[0]) * W, Y = v => t + (hi - v) / (hi - lo) * H;
+  g.fillStyle = css('--chart-bg'); g.fillRect(0, 0, w, h);
+  g.strokeStyle = css('--grid'); g.fillStyle = css('--muted'); g.font = '10.5px system-ui'; g.lineWidth = 1;
+  for (let k = 0; k <= 4; k++) { const v = lo + (hi - lo) * k / 4, y = Y(v); g.beginPath(); g.moveTo(l, y); g.lineTo(l + W, y); g.stroke(); g.fillText(ch.yfmt(v), 2, y + 3); }
+  for (let k = 0; k <= 5; k++) { const x = xr[0] + (xr[1] - xr[0]) * k / 5; g.fillText((x - T[0]).toFixed(1) + 's', X(x) - 12, h - 4); }
+  for (const L of D.legs) if (L.t1) { g.fillStyle = 'rgba(47,111,222,0.06)'; g.fillRect(X(Math.max(L.t0, xr[0])), t, Math.max(0, X(Math.min(L.t1, xr[1])) - X(Math.max(L.t0, xr[0]))), H); }
+  for (const e of CT) if (e.kind !== '이어짐' && e.t >= xr[0] && e.t <= xr[1]) {     // 닿음 (닿음 표와 같은 색)
+    g.strokeStyle = CT_C[e.kind]; g.globalAlpha = e.kind === '물체가 와서' ? 0.35 : 0.85; g.lineWidth = 1.2;
+    g.beginPath(); g.moveTo(X(e.t), t); g.lineTo(X(e.t), t + H); g.stroke(); g.globalAlpha = 1; g.lineWidth = 1;
+  }
+  for (const rl of ch.refLines) if (rl.v >= lo && rl.v <= hi) { g.strokeStyle = rl.color; g.setLineDash([4, 3]); g.beginPath(); g.moveTo(l, Y(rl.v)); g.lineTo(l + W, Y(rl.v)); g.stroke(); g.setLineDash([]); }
+  for (const s of vis) {
+    const [i0, i1] = span(s);
+    if (s.dots) {
+      g.fillStyle = s.color;
+      for (let i = i0; i <= i1; i++) { const v = s.y(i); if (v === null || !Number.isFinite(v)) continue; g.beginPath(); g.arc(X(s.tt[i]), Y(v), 2.6, 0, 2 * Math.PI); g.fill(); }
+      continue;
+    }
+    const step = Math.max(1, Math.floor((i1 - i0) / (W * 2)));
+    g.strokeStyle = s.color; g.lineWidth = s.width || 1.4; g.setLineDash(s.dash ? [5, 3] : []); g.beginPath(); let pen = false;
+    for (let i = i0; i <= i1; i += step) { const v = s.y(i); if (v === null || !Number.isFinite(v)) { pen = false; continue; } const x = X(s.tt[i]), y = Y(v); if (pen) g.lineTo(x, y); else { g.moveTo(x, y); pen = true; } }
+    g.stroke(); g.setLineDash([]);
+  }
+  ch.X = X;
+}
+function drawCursors() {
+  for (const ch of charts) {
+    if (!ch.X) continue;
+    const dpr = window.devicePixelRatio || 1, c = ch.ctx;
+    c.setTransform(1, 0, 0, 1, 0, 0); c.drawImage(ch.off, 0, 0); c.scale(dpr, dpr);
+    const x = ch.X(cur); c.strokeStyle = css('--ink'); c.lineWidth = 1; c.beginPath(); c.moveTo(x, ch.pad.t); c.lineTo(x, ch.cv.clientHeight - ch.pad.b); c.stroke();
+  }
+}
+function drawAllCharts() { charts.forEach(drawChart); drawCursors(); }
+
+// 관절 고르기
+{
+  const box = document.getElementById('jsel');
+  const all = document.createElement('button'); all.textContent = '전체'; all.classList.add('on');
+  const btns = D.joints.map((n, j) => { const b = document.createElement('button'); b.innerHTML = `<span style="color:${JC[j]}">■</span> J${j + 1}`; b.classList.add('on'); return b; });
+  const sync = () => { btns.forEach((b, j) => b.classList.toggle('on', selJ.has(j))); all.classList.toggle('on', selJ.size === 6); drawAllCharts(); };
+  all.onclick = () => { D.joints.forEach((n, j) => selJ.add(j)); sync(); };
+  btns.forEach((b, j) => b.onclick = () => { if (selJ.size === 6) { selJ.clear(); selJ.add(j); } else if (selJ.has(j)) { selJ.delete(j); if (!selJ.size) D.joints.forEach((n, k) => selJ.add(k)); } else selJ.add(j); sync(); });
+  box.append(all, ...btns);
+}
+// 관절 위치·속도·가속: 실선 = 보낸 명령 (5 ms), 점선 = WMX 명령 (10 ms)
+{
+  const P = [], V = [], A = [];
+  D.joints.forEach((n, j) => {
+    P.push({ joint: j, color: JC[j], width: 1.7, tt: S.t, y: i => deg(S.q[i][j]) }, { joint: j, color: JC[j], width: 1.1, dash: true, tt: T, y: i => deg(D.cmd[i][j]) });
+    V.push({ joint: j, color: JC[j], width: 1.7, tt: S.t, y: i => deg(S.v[i][j]) }, { joint: j, color: JC[j], width: 1.1, dash: true, tt: T, y: i => deg(D.cmdv[i][j]) });
+    A.push({ joint: j, color: JC[j], width: 1.7, tt: S.t, y: i => deg(S.a[i][j]) }, { joint: j, color: JC[j], width: 1.1, dash: true, tt: D.cmda.t, y: i => deg(D.cmda.a[i][j]) });
+  });
+  document.querySelectorAll('.lagn').forEach(e => { if (D.lag.ms != null) e.textContent = `점선은 전달 지연 ${D.lag.ms} ms 만큼 늦게 따라감 (아래 '명령 전달')`; else e.remove(); });
+  makeChart('c_jp', P, v => v.toFixed(0));
+  makeChart('c_jv', V, v => v.toFixed(0));
+  makeChart('c_ja', A, v => v.toFixed(0), [{ v: 0, color: '#8892a0', soft: true }]);
+}
+// 입력성형 확인: WMX 명령 (CMDPOS) − 실행된 성형 전 명령 u 전체를 성형기로 한 번에 컨볼루션한 것 (전달 지연 맞춘 뒤)
+if (D.shp && D.shp.res) {
+  const H = D.shp;
+  makeChart('c_shp', D.joints.map((n, j) => ({ joint: j, color: JC[j], width: 1.0, tt: H.t, y: i => H.res[i][j] })), v => v.toFixed(2),
+    [{ v: 0, color: '#8892a0', soft: true }]);
+  document.getElementById('h_shp').textContent = `WMX 명령 − 전체 컨볼루션 (mrad, 관절 각변위, 전달 지연 ${H.delay_ms} ms 를 맞춘 뒤)`;
+  document.getElementById('n_shp').innerHTML = `<ul>${li([
+    `성형기 <b>${H.label}</b> (평균 지연 ${H.mean_delay_ms} ms)`,
+    '전체 컨볼루션 = 실제로 실행된 성형 전 명령 u (1 ms, 이어 붙인 전체) 를 성형기로 한 번에 컨볼루션 (실시간 계산과 다른 계산 경로)',
+    'WMX 명령 = 엔진 1 ms 로그 (CMDPOS) → 0 근처면 WMX 로 간 명령 = 이어 붙인 경로 전체의 컨볼루션',
+    `움직이는 동안: 중앙값 ${H.median_mrad} · 99% ${H.p99_mrad} · 최대 <b>${H.max_mrad} mrad</b> (비교: 성형으로 바뀐 양 WMX − u 최대 ${H.wmx_minus_u_max_mrad} mrad)`])}</ul>`;
+} else { document.getElementById('w_shp').style.display = 'none'; document.getElementById('s_shp').style.display = 'none'; }
+// 명령 전달
+makeChart('c_a', D.joints.map((n, j) => ({ joint: j, color: JC[j], width: 1.0, tt: D.t_acc, y: i => D.acc[i][j] })), v => v.toFixed(1),
+  [{ v: D.max_acc, color: '#d9534f' }, { v: D.urdf_acc, color: '#8892a0' }]);
+document.getElementById('n_a').innerHTML = `<ul>${li([
+  'WMX 엔진이 1 ms 마다 받은 명령 속도의 변화 ÷ 1 ms (10 ms 안 최대)',
+  `<b>빨간 점선</b> = 멈춤 기준 (maxAcc ${D.max_acc}): 넘으면 CyclicBuffer 가 그 축을 멈춤 (실제 로봇이면 움직이다 섬)`,
+  D.urdf_acc != null ? `<b>회색 점선</b> = 로봇 가속 한계 ${D.urdf_acc} (기록 모델의 cuRobo 설정, 관절 중 최대)` : '로봇 가속 한계: 모델 설정을 못 읽음',
+  `이번 최대 <b>${Math.max(...D.acc.map(a => Math.max(...a))).toFixed(1)}</b>`])}</ul>`;
+if (D.lag.res) {
+  makeChart('c_lag', D.joints.map((n, j) => ({ joint: j, color: JC[j], width: 1.0, tt: D.lag.t, y: i => D.lag.res[i][j] })), v => v.toFixed(2), [{ v: 0, color: '#8892a0', soft: true }]);
+  document.getElementById('h_lag').textContent = `WMX 명령 − 보낸 명령 (mrad, 전달 지연 ${D.lag.ms} ms 를 맞춘 뒤)`;
+  document.getElementById('n_lag').innerHTML = `<ul>${li([
+    `<b>전달 지연 ${D.lag.ms} ms</b>: WMX 엔진은 보낸 명령을 이만큼 뒤에 같은 모양으로 실행<ul>${li(['지연 = JTC 10 ms 주기 + CyclicBuffer 에 쌓아 두는 양'])}</ul>`,
+    '그래프 = 지연을 맞춘 뒤 남는 차이 → R2 가 1 ms 점으로 쪼개며 생긴 궤적 모양 차이',
+    `움직이는 동안: 중앙값 ${D.lag.median_mrad} · 99% ${D.lag.p99_mrad} · 최대 <b>${D.lag.max_mrad} mrad</b>`])}</ul>`;
+} else document.getElementById('c_lag').parentElement.style.display = 'none';
+if (D.lead.t.length) {
+  const L = D.lead;
+  makeChart('c_lead', [
+    { color: '#4e79a7', width: 1.1, tt: L.t, y: i => L.ms[i] },
+    { color: '#d9534f', dots: true, tt: L.t, y: i => L.late[i] ? L.ms[i] : null },
+    { color: '#e08a2e', dots: true, tt: L.t, y: i => L.keep[i] ? L.ms[i] : null }], v => v.toFixed(0), [{ v: L.limit_ms, color: '#d9534f' }]);
+  const nl = L.late.filter(x => x).length, nk = L.keep.filter(x => x).length;
+  document.getElementById('n_lead').innerHTML = `<ul>${li([
+    '주기마다 (20 Hz) 메시지를 다 만든 시각 → 그 메시지의 실행 시각 (스탬프) 까지 남은 시간',
+    `<b>빨간 점선</b> (${L.limit_ms} ms) 아래 = 늦어서 안 보냄 → JTC 는 앞 메시지를 계속 (<span style="color:#d9534f">●</span> ${nl} 번)`,
+    `<span style="color:#e08a2e">●</span> = 안전 검사가 '앞 메시지 계속' 을 고름 (${nk} 번)`])}</ul>`;
+  document.getElementById('k_lead').innerHTML = `<span><i style="border-color:#4e79a7"></i>보낸 여유</span>`;
+} else document.getElementById('c_lead').parentElement.style.display = 'none';
+new ResizeObserver(drawAllCharts).observe(document.querySelector('.charts'));
+drawAllCharts();
+seek(T[0]);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
