@@ -94,6 +94,7 @@ ARG WARP_VERSION=1.17.0
 RUN if [ "$(dpkg --print-architecture)" = "arm64" ]; then WARP_PLATFORM=manylinux_2_34_aarch64; \
     else WARP_PLATFORM=manylinux_2_28_x86_64; fi && \
     python3 -m pip freeze | grep -iE '^(torch|torchvision|numpy|nvidia-|cuda-)' | grep -v ' @ ' \
+      | grep -viE '^cuda-pathfinder==' \
       > /tmp/curobo_v2_constraints.txt && \
     PIP="python3 -m pip install --no-cache-dir --break-system-packages -c /tmp/curobo_v2_constraints.txt" && \
     $PIP --no-deps \

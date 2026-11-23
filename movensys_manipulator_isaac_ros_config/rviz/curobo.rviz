@@ -18,6 +18,43 @@ Visualization Manager:
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /robot_description
+    - Class: rviz_default_plugins/RobotModel
+      Name: Goal
+      Enabled: true
+      Alpha: 0.4
+      TF Prefix: goal
+      Description Source: Topic
+      Description Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /curobo/goal_robot_description
+    - Class: rviz_default_plugins/InteractiveMarkers
+      Name: Goal marker
+      Enabled: true
+      Interactive Markers Namespace: /curobo_goal
+      Show Axes: false
+      Show Descriptions: true
+      Show Visual Aids: false
+    - Class: rviz_default_plugins/Marker
+      Name: Goal status
+      Enabled: true
+      Topic:
+        Depth: 1
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /curobo/goal_status
+    - Class: rviz_default_plugins/Marker
+      Name: Planned path
+      Enabled: true
+      Topic:
+        Depth: 1
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /curobo/planned_path
     - Class: rviz_default_plugins/TF
       Name: TF
       Enabled: false

@@ -27,7 +27,19 @@ mros ros2 launch movensys_manipulator_isaac_ros_config isaac_curobo.launch.py
 
 
 
-### Step 4: Tuning camera (optional)
+### Step 4: Send EEF targets
+```
+mros ros2 launch movensys_manipulator_isaac_ros_config curobo_eef_client.launch.py
+```
+
+
+
+
+
+
+
+
+### Step 5: Tuning camera (optional)
 ```
 mros ros2 launch movensys_manipulator_perception camera_transform_tuning.launch.py
     parent_frame:=world_manipulator

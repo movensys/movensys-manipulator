@@ -1,0 +1,11 @@
+geometry_msgs/PoseStamped target
+---
+bool success
+string message
+float64 position_error
+float64 orientation_error
+int32 replans
+---
+string state
+float64 position_error
+int32 replans

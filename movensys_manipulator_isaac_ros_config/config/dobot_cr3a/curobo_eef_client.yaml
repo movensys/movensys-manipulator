@@ -1,0 +1,9 @@
+curobo_eef_client:
+  ros__parameters:
+    action_name: /curobo/move_eef
+    frame_id: world_manipulator
+    # [x, y, z, roll, pitch, yaw] per target, sent in order
+    target_poses: [-0.25, -0.05, 0.45, 3.14159265, 0.0, 3.14159265,
+                   -0.25, -0.05, 0.40, 3.14159265, 0.0, 3.14159265,
+                    0.25, -0.05, 0.40, 3.14159265, 0.0, 3.14159265,
+                   -0.25, -0.05, 0.40, 3.14159265, 0.0, 3.14159265]

@@ -8,6 +8,7 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 import xacro
+import yaml
 
 def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time')
@@ -41,6 +42,8 @@ def generate_launch_description():
         default_value='false',
         description='Use simulation clock (/clock)'
     )
+    with open(config_file) as f:
+        params = yaml.safe_load(f)['curobo']['ros__parameters']
 
     camera_nvblox = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -72,6 +75,28 @@ def generate_launch_description():
         additional_env={'PYTHONPATH': curobo_v2_path + ':' + os.environ.get('PYTHONPATH', '')},
     )
 
+    goal_state_publisher = Node(
+        package='robot_state_publisher',
+        executable='robot_state_publisher',
+        name='goal_state_publisher',
+        output='log',
+        parameters=[
+            {'robot_description': robot_description, 'frame_prefix': 'goal/'},
+            {'use_sim_time': use_sim_time},
+        ],
+        remappings=[('joint_states', params['goal_joint_state_topic']),
+                    ('robot_description', '/curobo/goal_robot_description')],
+    )
+    goal_root_tf = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='goal_root_tf',
+        output='log',
+        arguments=['--frame-id', params['base_frame'],
+                   '--child-frame-id', 'goal/' + params['base_frame']],
+        parameters=[{'use_sim_time': use_sim_time}],
+    )
+
     rviz = Node(
         package='rviz2',
         executable='rviz2',
@@ -84,6 +109,8 @@ def generate_launch_description():
         declare_use_sim_time,
         camera_nvblox,
         robot_state_publisher,
+        goal_state_publisher,
+        goal_root_tf,
         curobo,
         rviz,
     ])
