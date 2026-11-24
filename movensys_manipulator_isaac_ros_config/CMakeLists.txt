@@ -31,10 +31,40 @@ find_package(tf2_msgs REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
+find_package(pluginlib REQUIRED)
+find_package(rviz_common REQUIRED)
+find_package(Qt5 REQUIRED COMPONENTS Widgets)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "action/MoveEef.action"
+  "msg/PlannerStatus.msg"
+  "srv/PlanningCommand.srv"
   DEPENDENCIES geometry_msgs
+)
+
+# RViz cuRobo planning panel (MoveIt-style start/goal state, Plan / Execute)
+set(CMAKE_AUTOMOC ON)
+add_library(curobo_rviz_panel SHARED
+  src/curobo_panel.cpp
+  include/movensys_manipulator_isaac_ros_config/curobo_panel.hpp
+)
+target_include_directories(curobo_rviz_panel PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
+target_link_libraries(curobo_rviz_panel
+  "${cpp_typesupport_target}"
+  rclcpp::rclcpp
+  rviz_common::rviz_common
+  pluginlib::pluginlib
+  Qt5::Widgets
+)
+pluginlib_export_plugin_description_file(rviz_common plugin_description.xml)
+install(TARGETS curobo_rviz_panel
+  LIBRARY DESTINATION lib
+  ARCHIVE DESTINATION lib
+  RUNTIME DESTINATION bin
 )
 
 if(BUILD_TESTING)

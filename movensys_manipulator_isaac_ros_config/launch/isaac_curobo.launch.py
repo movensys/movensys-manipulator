@@ -28,6 +28,9 @@ def generate_launch_description():
     xacro_file = os.path.join(
         pkg_movensys_manipulator_description, 'urdf', manipulator_model,
         'movensys_manipulator.xacro')
+    srdf_file = os.path.join(
+        get_package_share_directory('movensys_manipulator_moveit_config'), 'config',
+        manipulator_model, 'movensys_manipulator.srdf')
     xrdf_file = os.path.join(
         pkg_movensys_manipulator_description, 'urdf', manipulator_model,
         'movensys_manipulator.xrdf')
@@ -70,7 +73,8 @@ def generate_launch_description():
         output='screen',
         parameters=[
             config_file,
-            {'urdf_path': urdf_file, 'xrdf_path': xrdf_file, 'use_sim_time': use_sim_time},
+            {'urdf_path': urdf_file, 'xrdf_path': xrdf_file, 'srdf_path': srdf_file,
+             'use_sim_time': use_sim_time},
         ],
         additional_env={'PYTHONPATH': curobo_v2_path + ':' + os.environ.get('PYTHONPATH', '')},
     )
@@ -97,6 +101,29 @@ def generate_launch_description():
         parameters=[{'use_sim_time': use_sim_time}],
     )
 
+    # Start-state preview robot (TF prefix start/), like MoveIt's query start state
+    start_state_publisher = Node(
+        package='robot_state_publisher',
+        executable='robot_state_publisher',
+        name='start_state_publisher',
+        output='log',
+        parameters=[
+            {'robot_description': robot_description, 'frame_prefix': 'start/'},
+            {'use_sim_time': use_sim_time},
+        ],
+        remappings=[('joint_states', params['start_joint_state_topic']),
+                    ('robot_description', '/curobo/start_robot_description')],
+    )
+    start_root_tf = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='start_root_tf',
+        output='log',
+        arguments=['--frame-id', params['base_frame'],
+                   '--child-frame-id', 'start/' + params['base_frame']],
+        parameters=[{'use_sim_time': use_sim_time}],
+    )
+
     rviz = Node(
         package='rviz2',
         executable='rviz2',
@@ -111,6 +138,8 @@ def generate_launch_description():
         robot_state_publisher,
         goal_state_publisher,
         goal_root_tf,
+        start_state_publisher,
+        start_root_tf,
         curobo,
         rviz,
     ])

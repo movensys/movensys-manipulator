@@ -1,0 +1,7 @@
+<library path="curobo_rviz_panel">
+  <class name="movensys_manipulator_isaac_ros_config/CuroboPanel"
+         type="movensys_manipulator_isaac_ros_config::CuroboPanel"
+         base_class_type="rviz_common::Panel">
+    <description>MoveIt-style planning panel for curobo_node: start/goal state, Plan, Execute, Stop.</description>
+  </class>
+</library>

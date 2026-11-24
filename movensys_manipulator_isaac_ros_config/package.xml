@@ -26,6 +26,9 @@
   <depend>control_msgs</depend>
   <depend>trajectory_msgs</depend>
   <depend>sensor_msgs</depend>
+  <depend>pluginlib</depend>
+  <depend>rviz_common</depend>
+  <build_depend>qtbase5-dev</build_depend>
 
   <exec_depend>moveit_resources_panda_description</exec_depend>
   <exec_depend>joint_state_publisher</exec_depend>

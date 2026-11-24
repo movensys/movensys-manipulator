@@ -1,0 +1,14 @@
+# Command for curobo_node from the RViz cuRobo panel (/curobo/command).
+string PLAN = "plan"                   # plan start -> goal, preview only
+string EXECUTE = "execute"             # execute the previewed plan
+string PLAN_EXECUTE = "plan_execute"   # plan from <current>, then execute
+string STOP = "stop"
+string SET_START = "set_start"         # name: "<current>" or a named state
+string SET_GOAL = "set_goal"           # name: "<current>", "<marker>" or a named state
+string LIVE_FOLLOW = "live_follow"     # name: "on" or "off"
+
+string command
+string name
+---
+bool success
+string message

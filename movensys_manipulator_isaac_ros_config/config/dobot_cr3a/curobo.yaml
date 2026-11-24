@@ -1,6 +1,8 @@
 curobo:
   ros__parameters:
     joint_names: ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6"]
+    # SRDF group whose named states (group_state) appear as start/goal states in the panel
+    planning_group: movensys_manipulator_arm
     base_frame: world_manipulator
 
     # Topics
@@ -11,7 +13,9 @@ curobo:
     camera_info_topic: /image_nvblox/camera_info
     obstacles_topic: /curobo/obstacles
     goal_joint_state_topic: /curobo/goal_joint_states
-    goal_status_topic: /curobo/goal_status
+    start_joint_state_topic: /curobo/start_joint_states
+    planner_status_topic: /curobo/planner_status
+    command_service: /curobo/command
     planned_path_topic: /curobo/planned_path
     interactive_marker_namespace: curobo_goal
 

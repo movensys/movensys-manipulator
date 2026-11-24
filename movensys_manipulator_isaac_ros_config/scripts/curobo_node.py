@@ -14,17 +14,20 @@ import os
 import threading
 import time
 import types
+import xml.etree.ElementTree as ET
 
 from builtin_interfaces.msg import Duration, Time
 from geometry_msgs.msg import Point, Pose as PoseMsg
-from interactive_markers import InteractiveMarkerServer, MenuHandler
+from interactive_markers import InteractiveMarkerServer
 from movensys_manipulator_isaac_ros_config.action import MoveEef
+from movensys_manipulator_isaac_ros_config.msg import PlannerStatus
+from movensys_manipulator_isaac_ros_config.srv import PlanningCommand
 import numpy as np
 import rclpy
 from rclpy.action import ActionServer, CancelResponse
 from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
-from rclpy.qos import qos_profile_sensor_data
+from rclpy.qos import DurabilityPolicy, QoSProfile, qos_profile_sensor_data
 from sensor_msgs.msg import CameraInfo, Image, JointState as JointStateMsg
 import tf2_ros
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
@@ -32,6 +35,7 @@ from visualization_msgs.msg import (InteractiveMarker, InteractiveMarkerControl,
                                     InteractiveMarkerFeedback, Marker)
 
 WALL_DECEL = 0.8
+CURRENT, MARKER = '<current>', '<marker>'
 WALL_INSET = 1e-3
 
 
@@ -170,7 +174,11 @@ class Curobo(Node):
         camera_info_topic = p('camera_info_topic', '/image_nvblox/camera_info').value
         obstacles_topic = p('obstacles_topic', '/curobo/obstacles').value
         goal_js_topic = p('goal_joint_state_topic', '/curobo/goal_joint_states').value
-        status_topic = p('goal_status_topic', '/curobo/goal_status').value
+        start_js_topic = p('start_joint_state_topic', '/curobo/start_joint_states').value
+        status_topic = p('planner_status_topic', '/curobo/planner_status').value
+        command_service = p('command_service', '/curobo/command').value
+        srdf_path = p('srdf_path', '').value
+        self.planning_group = p('planning_group', '').value
         path_topic = p('planned_path_topic', '/curobo/planned_path').value
         self.im_namespace = p('interactive_marker_namespace', 'curobo_goal').value
 
@@ -272,8 +280,12 @@ class Curobo(Node):
         self.goal_set = False
         self.goal_q = None
         self.goal_ok = False
-        self.path_plan = None
         self.status = ('', 'info')
+        self.start_name = CURRENT
+        self.goal_name = CURRENT
+        self.preview = None
+        self.ui_cmds = collections.deque()
+        self.named = self._load_named_states(srdf_path)
         self.last_esdf = 0.0
         self.last_marker = 0.0
         self.cycle_times = []
@@ -293,7 +305,11 @@ class Curobo(Node):
         self.pub = self.create_publisher(JointTrajectory, self.output_topic, 10)
         self.marker_pub = self.create_publisher(Marker, obstacles_topic, 1)
         self.goal_js_pub = self.create_publisher(JointStateMsg, goal_js_topic, 1)
-        self.status_pub = self.create_publisher(Marker, status_topic, 1)
+        self.start_js_pub = self.create_publisher(JointStateMsg, start_js_topic, 1)
+        self.status_pub = self.create_publisher(
+            PlannerStatus, status_topic,
+            QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
+        self.create_service(PlanningCommand, command_service, self._on_command)
         self.path_pub = self.create_publisher(Marker, path_topic, 1)
         self.create_timer(1.0 / self.integrate_rate_hz, self._map_cycle)
         self.create_timer(1.0 / self.ui_rate_hz, self._ui_cycle)
@@ -988,16 +1004,31 @@ class Curobo(Node):
 
     # ------------------------------------------------------------------ RViz UI
 
+    # ------------------------------------------------------------------ RViz UI
+    # The cuRobo RViz panel (CuroboPanel) sends PlanningCommand requests and shows
+    # PlannerStatus; the 6-DOF interactive marker sets the <marker> goal.
+
+    def _load_named_states(self, path):
+        """SRDF group_states that set every planning joint -> {name: joint positions}."""
+        named = {}
+        if not path:
+            return named
+        try:
+            root = ET.parse(path).getroot()
+        except (OSError, ET.ParseError) as e:
+            self.get_logger().warn(f'Cannot read SRDF {path}: {e}')
+            return named
+        for gs in root.iter('group_state'):
+            if self.planning_group and gs.get('group') != self.planning_group:
+                continue
+            vals = {j.get('name'): float(j.get('value')) for j in gs.iter('joint')}
+            if all(n in vals for n in self.joint_names):
+                named[gs.get('name')] = np.array([vals[n] for n in self.joint_names])
+        self.get_logger().info(f'Named states from SRDF: {list(named)}')
+        return named
+
     def _create_ui(self):
         self.im_server = InteractiveMarkerServer(self, self.im_namespace)
-        self.menu = MenuHandler()
-        self.menu.insert('Plan', callback=lambda fb: self._plan_preview())
-        self.menu.insert('Execute', callback=lambda fb: self._execute_preview())
-        self.menu.insert('Stop', callback=lambda fb: self._stop())
-        self.menu.insert('Reset goal to current', callback=lambda fb: self._reset_goal())
-        self.follow_entry = self.menu.insert('Live follow',
-                                             callback=lambda fb: self._toggle_follow())
-        self.menu.setCheckState(self.follow_entry, MenuHandler.UNCHECKED)
         pose = self._pose_msg(self._tool_pose(self.js))
         im = InteractiveMarker()
         im.header.frame_id = self.base_frame
@@ -1024,45 +1055,10 @@ class Curobo(Node):
                 c.interaction_mode = mode
                 im.controls.append(c)
         self.im_server.insert(im, feedback_callback=self._on_marker)
-        self.menu.apply(self.im_server, 'goal')
-        self.im_server.insert(self._buttons_marker(pose), feedback_callback=self._on_button)
         self.im_server.applyChanges()
         self.goal_pose = self._pose_list(pose)
         self.goal_q, self.goal_ok = self.js.copy(), True
-        self._set_status('Drag the goal, then PLAN', 'info')
-
-    def _buttons_marker(self, goal_pose):
-        im = InteractiveMarker()
-        im.header.frame_id = self.base_frame
-        im.name = 'buttons'
-        im.scale = self.marker_scale
-        im.pose = self._buttons_pose(goal_pose)
-        for i, (name, rgb) in enumerate((('plan', (0.2, 0.5, 1.0)), ('execute', (0.1, 0.8, 0.2)))):
-            c = InteractiveMarkerControl()
-            c.name = name
-            c.interaction_mode = InteractiveMarkerControl.BUTTON
-            c.always_visible = True
-            box = Marker(type=Marker.CUBE)
-            box.pose.position.y = (i - 0.5) * 0.11
-            box.scale.x, box.scale.y, box.scale.z = 0.01, 0.10, 0.035
-            box.color.r, box.color.g, box.color.b, box.color.a = *rgb, 0.9
-            text = Marker(type=Marker.TEXT_VIEW_FACING)
-            text.pose.position.y = box.pose.position.y
-            text.pose.position.z = 0.003
-            text.scale.z = 0.022
-            text.text = name.upper()
-            text.color.r = text.color.g = text.color.b = text.color.a = 1.0
-            c.markers.extend([box, text])
-            im.controls.append(c)
-        return im
-
-    @staticmethod
-    def _buttons_pose(goal_pose):
-        m = PoseMsg()
-        m.position.x, m.position.y = goal_pose.position.x, goal_pose.position.y
-        m.position.z = goal_pose.position.z + 0.2
-        m.orientation.w = 1.0
-        return m
+        self._set_status('Drag the goal marker or pick a goal state, then Plan', 'info')
 
     @staticmethod
     def _pose_msg(p):
@@ -1076,25 +1072,77 @@ class Curobo(Node):
         return [m.position.x, m.position.y, m.position.z,
                 m.orientation.w, m.orientation.x, m.orientation.y, m.orientation.z]
 
+    def _set_marker(self, pose_list):
+        self.im_server.setPose('goal', self._pose_msg(pose_list))
+        self.im_server.applyChanges()
+
     def _on_marker(self, fb):
         if fb.event_type == InteractiveMarkerFeedback.POSE_UPDATE:
             self.goal_pose = self._pose_list(fb.pose)
             self.goal_pose_dirty = True
             self.goal_set = True
-            self.im_server.setPose('buttons', self._buttons_pose(fb.pose))
-            self.im_server.applyChanges()
+            self.goal_name = MARKER
 
-    def _on_button(self, fb):
-        if fb.event_type != InteractiveMarkerFeedback.BUTTON_CLICK:
-            return
-        if fb.control_name == 'plan':
-            self._plan_preview()
-        elif fb.control_name == 'execute':
+    def _on_command(self, req, res):
+        R = PlanningCommand.Request
+        names = {
+            R.SET_START: [CURRENT] + list(self.named),
+            R.SET_GOAL: [MARKER, CURRENT] + list(self.named),
+            R.LIVE_FOLLOW: ['on', 'off'],
+        }
+        if req.command not in (R.PLAN, R.EXECUTE, R.PLAN_EXECUTE, R.STOP) and \
+                req.command not in names:
+            res.success, res.message = False, f'Unknown command "{req.command}"'
+        elif req.command in names and req.name not in names[req.command]:
+            res.success, res.message = False, f'Unknown {req.command} name "{req.name}"'
+        else:
+            self.ui_cmds.append((req.command, req.name))
+            res.success, res.message = True, 'queued'
+        return res
+
+    def _ui_command(self, cmd, name):
+        R = PlanningCommand.Request
+        if cmd == R.SET_START:
+            self.start_name = name
+            self._clear_path()
+            self._set_status(f'Start state {name}', 'info')
+        elif cmd == R.SET_GOAL:
+            self._clear_path()
+            self.goal_name = name
+            if name == CURRENT:
+                self.goal_set = False
+                self._set_status('Goal state <current>', 'info')
+            elif name == MARKER:
+                self.goal_set, self.goal_pose_dirty = True, True
+            else:
+                q = self.named[name].copy()
+                self.goal_q, self.goal_ok, self.goal_set = q, True, True
+                self.goal_pose_dirty = False
+                self.goal_pose = self._tool_pose(q)
+                self._set_marker(self.goal_pose)
+                if self.live_follow:
+                    self._set_goal(q)
+                self._set_status(f'Goal state {name} - click Plan', 'info')
+        elif cmd == R.PLAN:
+            self._start_preview(execute=False)
+        elif cmd == R.PLAN_EXECUTE:
+            self._start_preview(execute=True)
+        elif cmd == R.EXECUTE:
             self._execute_preview()
+        elif cmd == R.STOP:
+            self._stop()
+        elif cmd == R.LIVE_FOLLOW and (name == 'on') != self.live_follow:
+            self._toggle_follow()
+
+    def _start_q(self):
+        return self.js.copy() if self.start_name == CURRENT else self.named[self.start_name].copy()
 
     def _ui_cycle(self):
         if self.ik is None:
             return
+        while self.ui_cmds:
+            self._ui_command(*self.ui_cmds.popleft())
+        self._poll_preview()
         if self.exec is not None:
             e = self.exec
             self.goal_pose = e['pose']
@@ -1105,18 +1153,12 @@ class Curobo(Node):
             if e['replans']:
                 text += f' ({e["replans"]} replans)'
             self._set_status(text, 'error' if e['state'] == 'BLOCKED' else 'busy')
-            pose = self._pose_msg(e['pose'])
-            self.im_server.setPose('goal', pose)
-            self.im_server.setPose('buttons', self._buttons_pose(pose))
-            self.im_server.applyChanges()
+            self._set_marker(e['pose'])
             self.goal_set = True
         elif not self.goal_set and not self.active:
             self.goal_q, self.goal_ok = self.js.copy(), True
-            pose = self._pose_msg(self._tool_pose(self.js))
-            self.goal_pose = self._pose_list(pose)
-            self.im_server.setPose('goal', pose)
-            self.im_server.setPose('buttons', self._buttons_pose(pose))
-            self.im_server.applyChanges()
+            self.goal_pose = self._tool_pose(self.js)
+            self._set_marker(self.goal_pose)
         elif self.goal_pose_dirty and self.solver_lock.acquire(blocking=False):
             try:
                 self.goal_pose_dirty = False
@@ -1134,36 +1176,50 @@ class Curobo(Node):
                                  'ok' if ok else 'error')
             else:
                 self._clear_path()
-                self._set_status('Goal OK - click PLAN' if ok else
+                self._set_status('Goal OK - click Plan' if ok else
                                  'No IK solution (unreachable or in collision)',
                                  'info' if ok else 'error')
-        self._publish_goal_preview()
+        self._publish_state(self.goal_js_pub, self.goal_q)
+        self._publish_state(self.start_js_pub, self._start_q())
+        self._publish_status()
 
     def _set_status(self, text, level):
         self.status = (text, level)
 
-    def _publish_goal_preview(self):
-        if self.goal_q is not None and self.js_full is not None:
-            names, pos = self.js_full
-            pos = list(pos)
-            for i, n in enumerate(self.joint_names):
-                pos[names.index(n)] = float(self.goal_q[i])
-            msg = JointStateMsg()
-            msg.header.stamp = self.get_clock().now().to_msg()
-            msg.name, msg.position = names, pos
-            self.goal_js_pub.publish(msg)
+    def _publish_state(self, pub, q):
+        if q is None or self.js_full is None:
+            return
+        names, pos = self.js_full
+        pos = list(pos)
+        for i, n in enumerate(self.joint_names):
+            pos[names.index(n)] = float(q[i])
+        msg = JointStateMsg()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.name, msg.position = names, pos
+        pub.publish(msg)
+
+    def _can_execute(self):
+        pv = self.preview
+        return (pv is not None and pv['path'] is not None and self.exec is None and
+                not self.active and np.max(np.abs(self.js - pv['start'])) <= 0.05)
+
+    def _publish_status(self):
         text, level = self.status
-        m = Marker()
-        m.header.frame_id = self.base_frame
-        m.ns, m.id, m.type, m.action = 'goal_status', 0, Marker.TEXT_VIEW_FACING, Marker.ADD
-        x, y, z = self.goal_pose[:3]
-        m.pose.position.x, m.pose.position.y, m.pose.position.z = x, y, z + 0.27
-        m.pose.orientation.w = 1.0
-        m.scale.z = 0.03
+        pv = self.preview
+        m = PlannerStatus()
         m.text = text
-        m.color.r, m.color.g, m.color.b = {'ok': (0.2, 1.0, 0.2), 'error': (1.0, 0.2, 0.2),
-                                           'busy': (1.0, 0.8, 0.1)}.get(level, (1.0, 1.0, 1.0))
-        m.color.a = 1.0
+        m.level = {'ok': PlannerStatus.LEVEL_OK, 'busy': PlannerStatus.LEVEL_BUSY,
+                   'error': PlannerStatus.LEVEL_ERROR}.get(level, PlannerStatus.LEVEL_INFO)
+        m.start_states = [CURRENT] + list(self.named)
+        m.goal_states = [MARKER, CURRENT] + list(self.named)
+        m.start_state, m.goal_state = self.start_name, self.goal_name
+        m.goal_ok = bool(self.goal_ok)
+        m.planning = pv is not None and pv['path'] is None
+        m.has_plan = pv is not None and pv['path'] is not None
+        m.can_execute = bool(self._can_execute())
+        m.moving = self.exec is not None or (self.active and not self.live_follow)
+        m.live_follow = self.live_follow
+        m.plan_duration = (len(pv['path']) - 1) * self.plan_dt if m.has_plan else 0.0
         self.status_pub.publish(m)
 
     def _draw_path(self, path):
@@ -1181,70 +1237,83 @@ class Curobo(Node):
         self.path_pub.publish(m)
 
     def _clear_path(self):
-        self.path_plan = None
+        self.preview = None
         m = Marker()
         m.header.frame_id = self.base_frame
         m.ns, m.id, m.action = 'planned_path', 0, Marker.DELETE
         self.path_pub.publish(m)
 
-    def _plan_preview(self):
-        if self.active:
-            self._set_status('Robot is moving - Stop first', 'error')
-            return
+    def _preview_compute(self, start, goal):
+        """Worker thread: global plan for the panel's Plan button."""
+        with self.solver_lock:
+            path = self._plan_path(start, goal)
+            return path, getattr(self, 'plan_fail', None)
+
+    def _start_preview(self, execute):
+        if self.exec is not None or self.active:
+            return self._set_status('Robot is moving - Stop first', 'error')
         if not self.goal_ok:
-            self._set_status('No IK solution - move the goal', 'error')
-            return
-        if not self.solver_lock.acquire(blocking=False):
-            self._set_status('Planner busy - try again', 'error')
+            return self._set_status('No IK solution for the goal - move it', 'error')
+        if execute and self.start_name != CURRENT:
+            return self._set_status('Plan & Execute needs start state <current>', 'error')
+        if not self._replan_idle():
+            return self._set_status('Planner busy - try again', 'error')
+        start, goal = self._start_q(), np.asarray(self.goal_q, float).copy()
+        self._clear_path()
+        job = self.replan_job = self.replan_pool.submit(self._preview_compute, start, goal)
+        self.preview = {'job': job, 'start': start, 'goal': goal, 'pose': list(self.goal_pose),
+                        'execute': execute, 'path': None}
+        self._set_status('Planning...', 'busy')
+
+    def _poll_preview(self):
+        pv = self.preview
+        if pv is None or pv['path'] is not None or not pv['job'].done():
             return
         try:
-            path = self._plan_path(self.js, self.goal_q)
-        finally:
-            self.solver_lock.release()
+            path, fail = pv['job'].result()
+        except Exception as ex:  # keep the UI alive if a solve throws
+            path, fail = None, repr(ex)
         if path is None:
-            self._clear_path()
-            self._set_status('Plan failed - move the goal', 'error')
-            return
-        self.path_plan, self.path_plan_start = path, self.js.copy()
+            self.preview = None
+            return self._set_status(f'Plan failed: {fail}', 'error')
+        pv['path'], pv['job'] = path, None
         self._draw_path(path)
-        self._set_status(f'Plan OK ({(len(path) - 1) * self.plan_dt:.1f} s) - click EXECUTE',
-                         'ok')
+        if pv['execute']:
+            return self._execute_preview()
+        dur = (len(path) - 1) * self.plan_dt
+        if self._can_execute():
+            self._set_status(f'Plan OK ({dur:.1f} s) - click Execute', 'ok')
+        else:
+            self._set_status(f'Plan OK ({dur:.1f} s) - preview from {self.start_name}', 'ok')
 
     def _execute_preview(self):
-        if self.path_plan is None:
-            self._set_status('No plan - click PLAN first', 'error')
-            return
-        if self.active:
-            self._set_status('Robot is moving - Stop first', 'error')
-            return
-        if np.max(np.abs(self.js - self.path_plan_start)) > 0.05:
-            self._clear_path()
-            self._set_status('Robot moved since planning - PLAN again', 'error')
-            return
+        pv = self.preview
+        if pv is None or pv['path'] is None:
+            return self._set_status('No plan - click Plan first', 'error')
+        if self.exec is not None or self.active:
+            return self._set_status('Robot is moving - Stop first', 'error')
+        if not self._can_execute():
+            return self._set_status('Plan does not start at the current state - '
+                                    'Plan again from <current>', 'error')
         self._submit(types.SimpleNamespace(
-            pose=list(self.goal_pose), goal_q=self.goal_q.copy(), path=self.path_plan,
+            pose=pv['pose'], goal_q=pv['goal'].copy(), path=pv['path'],
             source='rviz', cancel=False, done=threading.Event(), result=None))
+        self.preview = None
+        self._set_status('Executing', 'busy')
 
     def _stop(self):
         if self.live_follow:
             self._toggle_follow()
+        if self.preview is not None and self.preview['path'] is None:
+            self.preview = None
         if self.exec is not None:
             self.exec['req'].cancel = True
         elif self.active:
             self._set_goal(self.plan[2][-1].copy() if self.plan is not None else self.js)
         self._set_status('Stopped', 'info')
 
-    def _reset_goal(self):
-        self.goal_set = False
-        self._clear_path()
-        self._set_status('Drag the goal, then PLAN', 'info')
-
     def _toggle_follow(self):
         self.live_follow = not self.live_follow
-        self.menu.setCheckState(self.follow_entry, MenuHandler.CHECKED if self.live_follow
-                                else MenuHandler.UNCHECKED)
-        self.menu.reApply(self.im_server)
-        self.im_server.applyChanges()
         if self.live_follow:
             if self.exec is not None:
                 self.exec['req'].cancel = True
@@ -1253,6 +1322,8 @@ class Curobo(Node):
             if self.goal_ok:
                 self._set_goal(self.goal_q)
             self._set_status('Live follow', 'ok')
+        else:
+            self._set_status('Live follow off', 'info')
 
 
 def main(args=None):

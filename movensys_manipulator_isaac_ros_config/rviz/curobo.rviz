@@ -1,6 +1,8 @@
 Panels:
   - Class: rviz_common/Displays
     Name: Displays
+  - Class: movensys_manipulator_isaac_ros_config/CuroboPanel
+    Name: cuRobo
 Visualization Manager:
   Class: ""
   Displays:
@@ -19,6 +21,18 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /robot_description
     - Class: rviz_default_plugins/RobotModel
+      Name: Start state
+      Enabled: true
+      Alpha: 0.3
+      TF Prefix: start
+      Description Source: Topic
+      Description Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /curobo/start_robot_description
+    - Class: rviz_default_plugins/RobotModel
       Name: Goal
       Enabled: true
       Alpha: 0.4
@@ -35,17 +49,8 @@ Visualization Manager:
       Enabled: true
       Interactive Markers Namespace: /curobo_goal
       Show Axes: false
-      Show Descriptions: true
+      Show Descriptions: false
       Show Visual Aids: false
-    - Class: rviz_default_plugins/Marker
-      Name: Goal status
-      Enabled: true
-      Topic:
-        Depth: 1
-        Durability Policy: Volatile
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /curobo/goal_status
     - Class: rviz_default_plugins/Marker
       Name: Planned path
       Enabled: true
