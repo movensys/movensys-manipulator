@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:macro name="tool">
+
+    <link name="tool">
+      <inertial>
+        <origin xyz="0 0 0.03" rpy="0 0 0" />
+        <mass value="1.0" />
+        <inertia ixx="8.29484481057063E-05" ixy="-1.45209400395148E-09" ixz="-1.72340872805449E-11"
+                 iyy="8.35928339777967E-05" iyz="-1.33911019721127E-07" izz="0.000131911087085913" />
+      </inertial>
+      <visual>
+        <origin xyz="-0.045 -0.045 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find movensys_manipulator_description)/urdf/dobot_cr3a_custom_tool/assets/tool.STL" scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name=""><color rgba="0.3 0.3 0.3 1" /></material>
+      </visual>
+      <collision>
+        <origin xyz="-0.045 -0.045 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find movensys_manipulator_description)/urdf/dobot_cr3a_custom_tool/assets/tool.STL" scale="0.001 0.001 0.001"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <joint name="tool_tcp_joint" type="fixed">
+      <origin xyz="0 0 0.220" rpy="0 0 0" />
+      <parent link="tool" />
+      <child link="tool_tcp" />
+    </joint>
+
+    <link name="tool_tcp"/>
+
+  </xacro:macro>
+
+</robot>
