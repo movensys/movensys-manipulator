@@ -297,7 +297,7 @@
         <mesh filename="file:///home/hehe-jazzy/workspaces/movensys_ws/install/movensys_manipulator_description/share/movensys_manipulator_description/urdf/dobot_cr3a_custom_tool/assets/tool.STL" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="">
-        <color rgba="0.3 0.3 0.3 1"/>
+        <color rgba="1 0 0 1"/>
       </material>
     </visual>
     <collision>
