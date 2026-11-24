@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+
+<robot name="movensys_manipulator" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+    <xacro:include filename="$(find movensys_manipulator_description)/urdf/ovr6048k1-v/stage.xacro" />
+    <xacro:include filename="$(find movensys_manipulator_description)/urdf/ovr6048k1-v/ovr6048k1-v.xacro"/>
+
+    <link name="world_manipulator"/>
+
+    <joint name="world_manipulator_to_table" type="fixed">
+        <parent link="world_manipulator"/>
+        <child  link="table"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+
+    <xacro:stage />
+
+    <!-- Onshape export is Y-up, so rotate Link0 +90 deg about X so the base stands on the table. -->
+    <joint name="robot_joint" type="fixed">
+        <origin xyz="0 0 0.005" rpy="1.5708 0 0"/>
+        <parent link="table"/>
+        <child link="Link0"/>
+    </joint>
+
+    <!-- Provisional commissioning limits; keep in sync with moveit joint_limits.yaml. -->
+    <xacro:ovr6048k1_v joint_vel="0.5" joint_effort="10"/>
+
+</robot>
