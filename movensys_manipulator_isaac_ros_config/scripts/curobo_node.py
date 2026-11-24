@@ -4,9 +4,11 @@
 MoveEef action (target pose) -> IK + global plan -> MPC follows the path at rate_hz, avoiding
 camera obstacles (depth -> robot mask -> ESDF) -> jerk-limited JointTrajectory ->
 dynamic_trajectory_controller. The path is checked against the live ESDF and replanned when
-blocked, when the MPC is pushed off it, or when progress stalls. RViz: drag the goal marker,
-PLAN, EXECUTE.
+blocked, when the MPC is pushed off it, or when progress stalls. IK + global planning run on a
+worker thread so the control loop keeps its period. RViz: drag the goal marker, PLAN, EXECUTE.
 """
+import collections
+from concurrent.futures import ThreadPoolExecutor
 import math
 import os
 import threading
@@ -198,6 +200,7 @@ class Curobo(Node):
         self.floor_band = float(p('floor_band', 0.015).value)
         self.base_exclude = list(p('base_exclude', [0.0] * 6).value)
         self.warmup_frames = int(p('warmup_frames', 15).value)
+        self.memory_margin = float(p('memory_margin', 0.03).value)
         self.depth_scale = float(p('depth_scale_16u', 0.001).value)
         self.marker_period_s = float(p('marker_period_s', 0.5).value)
 
@@ -221,6 +224,22 @@ class Curobo(Node):
         self.path_clearance = float(p('path_clearance', 0.01).value)
         self.replan_deviation = float(p('replan_deviation_rad', 0.3).value)
         self.stall_timeout = float(p('stall_timeout_s', 2.0).value)
+        self.settle_tol = float(p('settle_position_tolerance', 0.005).value)
+        # Idle obstacle avoidance (<= 0 disables): start the MPC below guard, stop above release.
+        self.guard_dist = float(p('idle_guard_distance', self.activation - 0.01).value)
+        self.guard_release = max(float(p('idle_guard_release', self.activation).value),
+                                 self.guard_dist)
+        self.guarding = False
+        if self.segment_distance >= self.activation:
+            self.get_logger().warn(
+                f'segment_distance {self.segment_distance} >= collision_activation_distance '
+                f'{self.activation}: obstacles closer than that to the arm are masked as robot, '
+                f'so the MPC (and idle guard) cannot react to them')
+        if self.plan_activation < self.activation:
+            self.get_logger().warn(
+                f'plan_collision_activation_distance {self.plan_activation} < MPC '
+                f'collision_activation_distance {self.activation}: IK/planner may pick goals the '
+                f'MPC will not reach')
         self.ui_rate_hz = float(p('ui_rate_hz', 10.0).value)
         self.marker_scale = float(p('goal_marker_scale', 0.2).value)
         self.dt = 1.0 / self.rate_hz
@@ -230,6 +249,7 @@ class Curobo(Node):
 
         self.js = None
         self.js_full = None
+        self.js_hist = collections.deque(maxlen=200)
         self.depth_msg = None
         self.depth_seq = 0
         self.integrated_seq = 0
@@ -258,6 +278,10 @@ class Curobo(Node):
         self.last_marker = 0.0
         self.cycle_times = []
         self.late = 0
+        # IK + planner are shared by the replan worker and the UI; MPC stays on the control loop.
+        self.solver_lock = threading.Lock()
+        self.replan_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix='curobo_replan')
+        self.replan_job = None
 
         self.action_node = rclpy.create_node('curobo_action', use_global_arguments=False)
         self.tf_buffer = tf2_ros.Buffer()
@@ -291,6 +315,20 @@ class Curobo(Node):
         from curobo.scene import Cuboid, Scene, VoxelGrid
         from curobo.types import CameraObservation, ContentPath, GoalToolPose, JointState, Pose
         self.torch = torch
+        # cuRobo records CUDA graphs lazily (GraphExecutor), which can happen on the replan worker.
+        # In torch's default 'global' capture mode a blocking CUDA call from any other thread (map,
+        # MPC) aborts that capture; 'thread_local' only checks the capturing thread.
+        if not getattr(torch.cuda.graph, '_thread_local_capture', False):
+            base = torch.cuda.graph
+
+            class _ThreadLocalCapture(base):
+                _thread_local_capture = True
+
+                def __init__(self, cuda_graph, *args, **kwargs):
+                    kwargs.setdefault('capture_error_mode', 'thread_local')
+                    super().__init__(cuda_graph, *args, **kwargs)
+
+            torch.cuda.graph = _ThreadLocalCapture
         self.device = torch.device('cuda:0')
         self.cu = {
             'load_robot_yaml': load_robot_yaml, 'MPC': ModelPredictiveControl,
@@ -316,6 +354,13 @@ class Curobo(Node):
             return
         self.js = np.array([msg.position[i] for i in idx], float)
         self.js_full = (list(msg.name), list(msg.position))
+        self.js_hist.append((msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9, self.js))
+
+    def _js_at(self, stamp):
+        t = stamp.sec + stamp.nanosec * 1e-9
+        if t <= 0.0 or not self.js_hist:
+            return self.js
+        return min(self.js_hist, key=lambda h: abs(h[0] - t))[1]
 
     def _on_depth(self, msg):
         self.depth_msg = msg
@@ -425,9 +470,16 @@ class Curobo(Node):
         pose = self.cu['Pose'].from_list(pose_list)
         obs = self.cu['CameraObservation']
         _, world = self.segmenter.get_robot_mask_from_active_js(
-            obs(depth_image=depth.clone(), pose=pose), self._joint_state(self.js))
+            obs(depth_image=depth.clone(), pose=pose),
+            self._joint_state(self._js_at(self.depth_msg.header.stamp)))
         seen = world > 0
         self.memory = self.torch.where(seen, world, self.memory)
+        # Memory fills robot-masked pixels with the last surface seen there, which is only valid
+        # while the robot is in front of it. If the ray now reaches the robot (e.g. the base)
+        # beyond the remembered depth, that surface has moved away: forget it, or it is
+        # re-integrated every frame and the vacated space never clears.
+        stale = ~seen & (depth > self.memory + self.memory_margin)
+        self.memory = self.torch.where(stale, self.torch.zeros_like(self.memory), self.memory)
         world = self.torch.where((depth > 0) & ~seen, self.memory, world)
         filtered, _ = self.filter(world.contiguous())
         rot = self.torch.as_tensor(_quat_to_matrix(*pose_list[3:]), dtype=self.torch.float32,
@@ -555,6 +607,13 @@ class Curobo(Node):
         return js.position.view(-1, js.position.shape[-1])[:, cols].cpu().numpy().astype(float)
 
     def _path_valid(self, path):
+        return bool(self._path_clear(path).all())
+
+    def _path_clear(self, path):
+        return self._clearance(path) >= self.path_clearance
+
+    def _clearance(self, path):
+        """Min distance (m) from the robot spheres to the camera ESDF for each config in path."""
         t = self.torch
         q = t.as_tensor(np.asarray(path, np.float32), device=self.device).view(
             -1, len(self.joint_names))
@@ -565,13 +624,12 @@ class Curobo(Node):
             (n - 1) * self.esdf_voxel / 2
         idx = t.round((sph[..., :3] - origin) / self.esdf_voxel).long()
         inside = ((idx >= 0) & (idx < n)).all(-1) & (sph[..., 3] > 0)
-        if not bool(inside.any()):
-            return True
         nx, ny, nz = self.grid_shape
         esdf = self.grid.feature_tensor.view(-1)[:nx * ny * nz].view(nx, ny, nz)
+        dist = t.full(inside.shape, 1e3, device=self.device)
         i = idx[inside]
-        dist = esdf[i[:, 0], i[:, 1], i[:, 2]].float() - sph[..., 3][inside]
-        return bool((dist >= self.path_clearance).all().item())
+        dist[inside] = esdf[i[:, 0], i[:, 1], i[:, 2]].float() - sph[..., 3][inside]
+        return dist.min(-1).values.cpu().numpy()
 
     # ------------------------------------------------------------------ execution
 
@@ -599,47 +657,63 @@ class Curobo(Node):
             self._finish(False, 'preempted')
         if self.live_follow:
             self._toggle_follow()
+        self.guarding = False
         now = self._now()
         self.exec = {
             'req': req, 'pose': req.pose, 'goal_q': req.goal_q, 'path': req.path, 'idx': 0,
             't0': now, 'last_try': -1e9, 'last_check': now, 'replans': 0, 'planned': False,
             'progress_idx': 0, 'progress_t': now, 'state': 'PLANNING', 'pos_err': float('nan')}
         if req.path is not None:
-            self.exec.update(planned=True, state='MOVING')
+            self.exec.update(planned=True, state='MOVING', clear0=self._path_clear(req.path))
             self._draw_path(req.path)
             self._activate()
         self.get_logger().info(
             f'New goal {np.round(req.pose[:3], 3).tolist()} ({req.source})')
 
-    def _replan(self, q):
+    def _replan_idle(self):
+        return self.replan_job is None or self.replan_job.done()
+
+    def _replan_compute(self, q, pose, goal_q, wp, i):
+        """Worker thread: IK + global plan. Uses only the IK and planner solvers."""
+        with self.solver_lock:
+            ok, gq = self._ik_solve(pose, goal_q if goal_q is not None else q)
+            if not ok:
+                ok, gq = self._ik_solve(pose, q)
+            if not ok:
+                return {'q': q, 'gq': None, 'path': None, 'fail': None}
+            path = self._plan_path(q, gq)
+            if path is None and wp is not None:
+                for k in (15, 40):
+                    j = max(i - k, 0)
+                    tail = self._plan_path(wp[j], gq)
+                    if tail is not None:
+                        path = np.vstack([wp[j:i + 1][::-1], tail])
+                        break
+                    if j == 0:
+                        break
+            return {'q': q, 'gq': gq, 'path': path, 'fail': getattr(self, 'plan_fail', None)}
+
+    def _apply_replan(self, job):
+        """Control loop: adopt a finished worker result for the current goal."""
         e = self.exec
-        seed = e['goal_q'] if e['goal_q'] is not None else q
-        ok, gq = self._ik_solve(e['pose'], seed)
-        if not ok:
-            ok, gq = self._ik_solve(e['pose'], q)
-        if not ok:
+        try:
+            res = job.result()
+        except Exception as ex:  # keep the control loop alive if a solve throws
+            self.get_logger().error(f'Replan error: {ex!r}', throttle_duration_sec=2.0)
+            return False
+        q, gq, path = res['q'], res['gq'], res['path']
+        if gq is None:
             self.get_logger().warn('Replan: no IK solution for target', throttle_duration_sec=2.0)
             return False
-        path = self._plan_path(q, gq)
-        if path is None and e['path'] is not None:
-            wp, i = e['path'], e['idx']
-            for k in (15, 40):
-                j = max(i - k, 0)
-                tail = self._plan_path(wp[j], gq)
-                if tail is not None:
-                    path = np.vstack([wp[j:i + 1][::-1], tail])
-                    break
-                if j == 0:
-                    break
         if path is None:
-            self.get_logger().warn(f'Replan failed: {self.plan_fail}, start clear: '
+            self.get_logger().warn(f'Replan failed: {res["fail"]}, start clear: '
                                    f'{self._path_valid(q[None])}', throttle_duration_sec=2.0)
             return False
         if e['planned']:
             e['replans'] += 1
             self.get_logger().info(f'Replanned ({e["replans"]})')
         e.update(goal_q=gq, path=path, idx=0, planned=True, state='MOVING',
-                 progress_idx=0, progress_t=self._now())
+                 progress_idx=0, progress_t=self._now(), clear0=self._path_clear(path))
         self.goal_q, self.goal_ok = gq, True
         self._draw_path(path)
         return True
@@ -655,15 +729,27 @@ class Curobo(Node):
         if e['state'] in ('PLANNING', 'REPLANNING', 'BLOCKED'):
             if not e['planned'] and now - e['t0'] > self.plan_timeout:
                 return self._finish(False, 'no collision-free plan (unreachable or blocked)')
-            if now - e['last_try'] >= self.replan_period:
-                e['last_try'] = now
-                if self._replan(q):
+            job = e.get('job')
+            if job is not None and job.done():
+                e['job'] = None
+                if self._apply_replan(job):
                     self._activate()
-                elif e['planned']:
-                    if e['state'] != 'BLOCKED':
-                        self.get_logger().warn('Path blocked, holding and retrying')
-                    e['state'] = 'BLOCKED'
-                    self._set_goal(q)
+                else:
+                    e['last_try'] = now
+                    if e['planned']:
+                        if e['state'] != 'BLOCKED':
+                            self.get_logger().warn('Path blocked, holding and retrying')
+                        e['state'] = 'BLOCKED'
+                        self._set_goal(q)
+            elif job is None and now - e['last_try'] >= self.replan_period and \
+                    self._replan_idle():
+                # Plan from where the arm is being held (the MPC goal) so the new path starts
+                # where the arm will actually be when the result arrives.
+                start = self.goal.copy() if self.active else np.asarray(q, float).copy()
+                e['last_try'] = now
+                e['job'] = self.replan_job = self.replan_pool.submit(
+                    self._replan_compute, start, list(e['pose']), e['goal_q'], e['path'],
+                    e['idx'])
             if e['state'] != 'MOVING':
                 return
 
@@ -685,7 +771,8 @@ class Curobo(Node):
             e['pos_err'] = float(np.linalg.norm(
                 np.asarray(self._tool_pose(q)[:3]) - np.asarray(e['pose'][:3])))
             reason = None
-            if not self._path_valid(wp[e['idx']:]):
+            i = e['idx']
+            if ((~self._path_clear(wp[i:])) & e['clear0'][i:]).any():
                 reason = 'obstacle on path'
             elif float(np.min(dist)) > self.replan_deviation:
                 reason = 'pushed off path'
@@ -694,10 +781,25 @@ class Curobo(Node):
             if reason:
                 self.get_logger().info(f'Replanning: {reason}')
                 e['state'], e['last_try'] = 'REPLANNING', -1e9
+                # Hold at the current stopping point while the worker plans.
+                self._set_goal(self.plan[2][-1].copy() if self.plan is not None else q)
                 return
 
-        if last and np.max(np.abs(q - wp[-1])) < self.arrive_tol and np.max(np.abs(v)) < 0.01:
+        if not (last and np.max(np.abs(v)) < 0.01):
+            e['settle_t'] = None
+        elif np.max(np.abs(q - wp[-1])) < self.arrive_tol:
             self._finish(True, 'reached')
+        elif e.get('settle_t') is None:
+            e['settle_t'] = now
+        elif now - e['settle_t'] > self.stall_timeout:
+            # Stopped short of the final waypoint (typically the MPC collision cost holding the
+            # arm off a nearby voxel): finish instead of waiting for goal_timeout_s.
+            err = float(np.linalg.norm(np.asarray(self._tool_pose(q)[:3]) -
+                                       np.asarray(e['pose'][:3])))
+            if err <= self.settle_tol:
+                self._finish(True, f'reached (settled {err * 1000:.1f} mm off)')
+            else:
+                self._finish(False, f'stalled {err * 1000:.1f} mm from goal')
 
     def _result(self, success, message, req, q=None):
         res = MoveEef.Result()
@@ -787,6 +889,31 @@ class Curobo(Node):
             self.path.extend(positions)
         return self.path[0]
 
+    def _idle_update(self, s0):
+        """No goal: hold the pose. Run the MPC (goal = hold pose) whenever an obstacle comes
+        within idle_guard_distance of the arm, so its collision cost pushes the arm away; it
+        returns to the hold pose and goes idle once clearance is back above idle_guard_release."""
+        q, v, _ = s0
+        at_hold = np.max(np.abs(q - self.goal)) < self.arrive_tol and np.max(np.abs(v)) < 0.01
+        if self.guard_dist <= 0.0:
+            if self.active and at_hold:
+                self.active = False
+            return
+        clear = float(self._clearance(q[None])[0])
+        if not self.active:
+            if clear < self.guard_dist:
+                hold = self.goal if np.max(np.abs(self.goal - q)) < 0.05 else q
+                self._activate()
+                self._set_goal(np.array(hold, float))
+                self.guarding = True
+                self.get_logger().warn(f'Obstacle {clear * 1000:.0f} mm from idle arm, avoiding',
+                                       throttle_duration_sec=1.0)
+        elif at_hold and clear >= self.guard_release:
+            self.active = False
+            if self.guarding:
+                self.guarding = False
+                self.get_logger().info(f'Obstacle cleared ({clear * 1000:.0f} mm), holding')
+
     def _plan_state(self, t):
         start, ts, q, v, a = self.plan
         i = int(np.clip(round((t - start) / self.step_s), 0, len(ts) - 1))
@@ -816,10 +943,8 @@ class Curobo(Node):
         stamp, s0 = self._command_state(now)
         if self.exec is not None:
             self._exec_update(s0)
-        elif self.active and not self.live_follow and \
-                np.max(np.abs(s0[0] - self.goal)) < self.arrive_tol and \
-                np.max(np.abs(s0[1])) < 0.01:
-            self.active = False
+        elif not self.live_follow:
+            self._idle_update(s0)
         if not self.active:
             self.plan = None
             return
@@ -992,10 +1117,13 @@ class Curobo(Node):
             self.im_server.setPose('goal', pose)
             self.im_server.setPose('buttons', self._buttons_pose(pose))
             self.im_server.applyChanges()
-        elif self.goal_pose_dirty:
-            self.goal_pose_dirty = False
-            ok, q = self._ik_solve(self.goal_pose, self.goal_q if self.goal_q is not None
-                                   else self.js)
+        elif self.goal_pose_dirty and self.solver_lock.acquire(blocking=False):
+            try:
+                self.goal_pose_dirty = False
+                ok, q = self._ik_solve(self.goal_pose, self.goal_q if self.goal_q is not None
+                                       else self.js)
+            finally:
+                self.solver_lock.release()
             if ok:
                 self.goal_q = q
             self.goal_ok = ok
@@ -1066,7 +1194,13 @@ class Curobo(Node):
         if not self.goal_ok:
             self._set_status('No IK solution - move the goal', 'error')
             return
-        path = self._plan_path(self.js, self.goal_q)
+        if not self.solver_lock.acquire(blocking=False):
+            self._set_status('Planner busy - try again', 'error')
+            return
+        try:
+            path = self._plan_path(self.js, self.goal_q)
+        finally:
+            self.solver_lock.release()
         if path is None:
             self._clear_path()
             self._set_status('Plan failed - move the goal', 'error')
@@ -1132,6 +1266,7 @@ def main(args=None):
     except (KeyboardInterrupt, rclpy.executors.ExternalShutdownException):
         pass
     finally:
+        node.replan_pool.shutdown(wait=False, cancel_futures=True)
         action_executor.shutdown()
         node.action_node.destroy_node()
         node.destroy_node()
