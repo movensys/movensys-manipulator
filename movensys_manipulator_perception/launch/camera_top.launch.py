@@ -41,10 +41,10 @@ def generate_launch_description() -> LaunchDescription:
         arguments=[
             "--frame-id", "world_manipulator",
             "--child-frame-id", "camera_top_link",
-            "--x", "0.27",
-            "--y", "0.0",
+            "--x", "0.0",
+            "--y", "-0.27",
             "--z", "0.7",
-            "--roll", "0.0",
+            "--roll", "1.5708",
             "--pitch", "1.5708",
             "--yaw", "0.0",
         ],
@@ -59,12 +59,12 @@ def generate_launch_description() -> LaunchDescription:
         arguments=[
             "--frame-id", "world_manipulator",
             "--child-frame-id", "camera_top_color_optical_frame",
-            "--x", "0.27",
-            "--y", "0.0",
+            "--x", "0.0",
+            "--y", "-0.27",
             "--z", "0.7",
             "--roll", "3.1416",
             "--pitch", "0.0",
-            "--yaw", "-1.5708",
+            "--yaw", "3.1416",
         ],
     )
 
